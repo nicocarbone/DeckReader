@@ -1,0 +1,157 @@
+id: io.github.nicocarbone.DeckReader
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: deckreader
+
+# Dependency pins below are also used by scripts/dev-build.sh (through
+# scripts/manifest_sources.py), so development builds match the Flatpak.
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  # GPU and game controllers (SDL reads /dev/input and /dev/hidraw).
+  - --device=all
+  # Book folders: ~/Books (the default), Documents and Downloads, the microSD
+  # card / USB drives and mounts. Not the whole home folder: a malicious book
+  # exploiting a parser bug must not be able to read SSH keys or other apps'
+  # data (D4). Read-only: v0.1 never writes into book folders. Other folders:
+  #   flatpak override --user --filesystem=/path:ro io.github.nicocarbone.DeckReader
+  - --filesystem=~/Books:ro
+  - --filesystem=xdg-documents:ro
+  - --filesystem=xdg-download:ro
+  - --filesystem=/run/media:ro
+  - --filesystem=/media:ro
+  - --filesystem=/mnt:ro
+  # App settings live in ~/.config/deckreader so they are easy to edit
+  # (same as DeckVideoPlayer).
+  - --filesystem=xdg-config/deckreader:create
+  # The battery level comes from /sys/class/power_supply (no permission).
+  - --env=LC_NUMERIC=C
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/man
+  - /share/doc
+  - '*.la'
+  - '*.a'
+
+modules:
+  # Unicode line breaking (UAX #14) for crengine. zlib licence.
+  - name: libunibreak
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+    sources:
+      - type: git
+        url: https://github.com/adah1972/libunibreak.git
+        tag: libunibreak_8_0_1
+        commit: ff24f284a567a006c183b3507b6c650d6ec68b94
+
+  # Unicode normalisation and case folding for crengine. MIT licence.
+  - name: utf8proc
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DUTF8PROC_ENABLE_TESTING=OFF
+    sources:
+      - type: git
+        url: https://github.com/JuliaStrings/utf8proc.git
+        tag: v2.12.0
+        commit: 79cdd5ab40c79afa559f689ffc13b76812dee1ac
+
+  # The book engine (EPUB/FB2/... parsing, CSS, layout, hyphenation). GPL-2.0+.
+  # Pinned one commit after 0.9.15 for a CSS parser buffer-overflow fix (D3).
+  - name: crengine-ng
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DOFFLINE_BUILD_MODE=ON
+      - -DUSE_CHM=OFF
+      - -DUSE_ANTIWORD=OFF
+      - -DWITH_LIBJXL=OFF
+      - -DWITH_XXHASH=OFF
+    sources:
+      - type: git
+        url: https://gitlab.com/coolreader-ng/crengine-ng.git
+        commit: 7e73232b576821d31b60150cea2434e83ea1fd63
+      # Visible hyphen at line ends with fonts whose U+00AD is empty (D3).
+      - type: patch
+        path: ../../patches/crengine-ng-visible-soft-hyphen.patch
+      # Books are untrusted input: ZIP size checks that hold, no files from
+      # outside the book (D22).
+      - type: patch
+        path: ../../patches/crengine-ng-zip-hardening.patch
+      - type: patch
+        path: ../../patches/crengine-ng-no-external-fonts.patch
+
+  # Bundled fonts (all SIL Open Font License 1.1, D9).
+  - name: fonts
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 -t ${FLATPAK_DEST}/share/deckreader/fonts inter/extras/ttf/Inter-Regular.ttf inter/extras/ttf/Inter-Italic.ttf inter/extras/ttf/Inter-Bold.ttf inter/extras/ttf/Inter-BoldItalic.ttf
+      - install -Dm644 -t ${FLATPAK_DEST}/share/deckreader/fonts literata/fonts/ttf/Literata-Regular.ttf literata/fonts/ttf/Literata-Italic.ttf literata/fonts/ttf/Literata-Bold.ttf literata/fonts/ttf/Literata-BoldItalic.ttf
+      - install -Dm644 -t ${FLATPAK_DEST}/share/deckreader/fonts atkinson/AtkinsonHyperlegible-Regular.ttf atkinson/AtkinsonHyperlegible-Italic.ttf atkinson/AtkinsonHyperlegible-Bold.ttf atkinson/AtkinsonHyperlegible-BoldItalic.ttf
+      - install -Dm644 inter/LICENSE.txt ${FLATPAK_DEST}/share/licenses/fonts/Inter-OFL.txt
+      - install -Dm644 literata/OFL.txt ${FLATPAK_DEST}/share/licenses/fonts/Literata-OFL.txt
+      - install -Dm644 atkinson/OFL.txt ${FLATPAK_DEST}/share/licenses/fonts/AtkinsonHyperlegible-OFL.txt
+    sources:
+      - type: archive
+        url: https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip
+        sha256: 9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e
+        strip-components: 0
+        dest: inter
+      - type: archive
+        url: https://github.com/googlefonts/literata/releases/download/3.103/3.103.zip
+        sha256: f7fb973cafb26cf785cbebaeaf51c18f87c15a3bcf4d82a7d4857564db5b056d
+        strip-components: 0
+        dest: literata
+      - type: file
+        url: https://github.com/google/fonts/raw/95f4904fc8bcf26d3420fe315560c96417c6dec7/ofl/atkinsonhyperlegible/AtkinsonHyperlegible-Regular.ttf
+        sha256: 7fb917c89019896d0b52ee84b7cbb3304c18cb90b19a62f5e32712bd23e97669
+        dest: atkinson
+      - type: file
+        url: https://github.com/google/fonts/raw/95f4904fc8bcf26d3420fe315560c96417c6dec7/ofl/atkinsonhyperlegible/AtkinsonHyperlegible-Italic.ttf
+        sha256: 021beda4d3c6edfc78872e436d74009f9a1bcb294331908fe5747c61d3dcc514
+        dest: atkinson
+      - type: file
+        url: https://github.com/google/fonts/raw/95f4904fc8bcf26d3420fe315560c96417c6dec7/ofl/atkinsonhyperlegible/AtkinsonHyperlegible-Bold.ttf
+        sha256: 5a3b0c8cc8ca545155150b4512a1fa248298df121c50d6557e651e61fbdab92f
+        dest: atkinson
+      - type: file
+        url: https://github.com/google/fonts/raw/95f4904fc8bcf26d3420fe315560c96417c6dec7/ofl/atkinsonhyperlegible/AtkinsonHyperlegible-BoldItalic.ttf
+        sha256: 7a46f1b0ef2f64b61065c1a6b5a11fcb9b019b44062d88ba121a083cc39e86bf
+        dest: atkinson
+      - type: file
+        url: https://github.com/google/fonts/raw/95f4904fc8bcf26d3420fe315560c96417c6dec7/ofl/atkinsonhyperlegible/OFL.txt
+        sha256: f32d22b3908fcad2c86a74000614ec22e6a7f66ea7e867e616026a27aebdc143
+        dest: atkinson
+
+  - name: deckreader
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DDECKREADER_TESTS=OFF
+    # These run in the build folder (builddir), hence the ../ paths.
+    post-install:
+      - ../scripts/build-info.sh ${FLATPAK_DEST}/share/deckreader/build-info
+      - install -Dm644 ../packaging/flatpak/${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 ../packaging/flatpak/${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 ../packaging/icons/${FLATPAK_ID}.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+      - install -Dm644 ../packaging/icons/${FLATPAK_ID}-256.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - .dev
+          - .flatpak-builder
+          - build-dir
+          - dist
+          - repo

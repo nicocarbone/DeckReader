@@ -1,0 +1,38 @@
+From: DeckReader
+Subject: [PATCH] Draw a visible hyphen when the font's U+00AD glyph is empty
+
+Literata (and other fonts) map the soft hyphen to an empty zero-width
+glyph. crengine draws that glyph at the end of a hyphenated line, so the
+hyphen was invisible and took no space. Use the font's "-" instead.
+---
+diff --git a/crengine/src/lvfont/lvfreetypeface.cpp b/crengine/src/lvfont/lvfreetypeface.cpp
+index e386351d..fa8c41a6 100644
+--- a/crengine/src/lvfont/lvfreetypeface.cpp
++++ b/crengine/src/lvfont/lvfreetypeface.cpp
+@@ -49,6 +49,7 @@
+ 
+ #include <ft2build.h>
+ #include FT_FREETYPE_H
++#include FT_ADVANCES_H
+ #include FT_OUTLINE_H         // for FT_Outline_Embolden()
+ #include FT_SYNTHESIS_H       // for FT_GlyphSlot_Oblique()
+ #include FT_GLYPH_H           // for FT_Matrix_Multiply()
+@@ -1122,6 +1123,18 @@ FT_UInt LVFreeTypeFace::getCharIndex(lUInt32 code, lChar32 def_char) {
+     if (code == '\t')
+         code = ' ';
+     FT_UInt ch_glyph_index = FT_Get_Char_Index(_face, code);
++    if (code == UNICODE_SOFT_HYPHEN_CODE && ch_glyph_index != 0) {
++        // Some fonts (Literata, for one) map U+00AD to an empty, zero-width
++        // glyph, as it is invisible inside words. It is only drawn where a
++        // word is hyphenated at the end of a line, where it must be visible:
++        // use the font's hyphen then.
++        FT_Fixed advance = 0;
++        if (FT_Get_Advance(_face, ch_glyph_index, FT_LOAD_NO_SCALE, &advance) != 0 || advance == 0) {
++            FT_UInt hyphen = FT_Get_Char_Index(_face, '-');
++            if (hyphen != 0)
++                ch_glyph_index = hyphen;
++        }
++    }
+     if (ch_glyph_index == 0 && code >= 0xF000 && code <= 0xF0FF) {
+         // If no glyph found and code is among the private unicode
+         // area classically used by symbol fonts (range U+F020-U+F0FF),

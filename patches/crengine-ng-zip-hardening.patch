@@ -1,0 +1,86 @@
+From: DeckReader
+Subject: [PATCH] ZIP hardening: trust the central directory, cap inflated output, bound ZIP64 extra fields
+
+* LVZipDecodeStream::Create used the local file header's sizes when they
+  were non-zero, so a crafted entry could list a small size in the central
+  directory (what applications see and check) and a huge one locally.
+  The central directory's sizes now win.
+* LVZipDecodeStream::read() inflated until the deflate stream ended,
+  whatever the declared size: output is now cut at the declared size.
+* The ZIP64 extra-field scan only checked the field header, and
+  getField64() only the untrusted Size: fields must now lie within the
+  extra data read and within Zip64ExtInfo::data.
+---
+diff --git a/crengine/src/lvstream/lvziparc.cpp b/crengine/src/lvstream/lvziparc.cpp
+index c73cc4b4..67801d19 100644
+--- a/crengine/src/lvstream/lvziparc.cpp
++++ b/crengine/src/lvstream/lvziparc.cpp
+@@ -304,11 +304,17 @@ int LVZipArc::ReadContents() {
+         lvsize_t offs = 0;
+         Zip64ExtInfo* ext;
+         if (zip64) {
+-            while (offs + 4 < extraSizeToRead) {
++            while (offs + 4 <= extraSizeToRead) {
+                 ext = (Zip64ExtInfo*)&extra[offs];
+                 ext->byteOrderConv();
++                // A field must lie within the extra data that was read, and the
++                // ZIP64 one within Zip64ExtInfo::data: getField64() only checks
++                // the (untrusted) Size field.
++                if (offs + 4 + ext->Size > extraSizeToRead)
++                    break;
+                 if (0x0001 == ext->Tag) {
+-                    zip64ExtInfo = ext;
++                    if (ext->Size <= sizeof(ext->data))
++                        zip64ExtInfo = ext;
+                     break;
+                 } else {
+                     offs += 4 + ext->Size;
+diff --git a/crengine/src/lvstream/lvzipdecodestream.cpp b/crengine/src/lvstream/lvzipdecodestream.cpp
+index fe7f250e..91edc0fe 100644
+--- a/crengine/src/lvstream/lvzipdecodestream.cpp
++++ b/crengine/src/lvstream/lvzipdecodestream.cpp
+@@ -189,6 +189,10 @@ bool LVZipDecodeStream::skip(int bytesToSkip) {
+ 
+ int LVZipDecodeStream::read(lUInt8* buf, int bytesToRead) {
+     int bytesRead = 0;
++    // Never return more than the entry's declared size: a deflate stream
++    // that expands further (a decompression bomb) is cut there.
++    if (bytesToRead < 0 || (lvpos_t)bytesToRead > m_outbytesleft)
++        bytesToRead = (int)m_outbytesleft;
+     //
+     while (bytesToRead > 0) {
+         int avail = decodeNext();
+@@ -346,11 +350,17 @@ LVStream* LVZipDecodeStream::Create(LVStreamRef stream, lvpos_t pos, lString32 n
+     lvsize_t offs = 0;
+     Zip64ExtInfo* ext;
+     if (zip64) {
+-        while (offs + 4 < extraSizeToRead) {
++        while (offs + 4 <= extraSizeToRead) {
+             ext = (Zip64ExtInfo*)&extra[offs];
+             ext->byteOrderConv();
++            // A field must lie within the extra data that was read, and the
++            // ZIP64 one within Zip64ExtInfo::data: getField64() only checks
++            // the (untrusted) Size field.
++            if (offs + 4 + ext->Size > extraSizeToRead)
++                break;
+             if (0x0001 == ext->Tag) {
+-                zip64ExtInfo = ext;
++                if (ext->Size <= sizeof(ext->data))
++                    zip64ExtInfo = ext;
+                 break;
+             } else {
+                 offs += 4 + ext->Size;
+@@ -369,9 +379,10 @@ LVStream* LVZipDecodeStream::Create(LVStreamRef stream, lvpos_t pos, lString32 n
+     if (stream->Seek(pos, LVSEEK_SET, NULL) != LVERR_OK)
+         return NULL;
+ #endif
+-    if (packSize == 0 && unpSize == 0) {
+-        // Can happen when local header does not carry these sizes
+-        // Use the ones provided that come from zip central directory
++    if (srcPackSize != 0 || srcUnpSize != 0) {
++        // Prefer the central directory's sizes: they are what the archive
++        // lists (and what an application may have checked before opening),
++        // whereas a crafted local header can claim anything.
+         packSize = srcPackSize;
+         unpSize = srcUnpSize;
+     }

@@ -1,0 +1,60 @@
+// The library: start screen, folders and recent books, drawn like
+// DeckVideoPlayer's library (header, rows with a selection pill, hint
+// bar) and driven with the same buttons (DeckVideoPlayer D10).
+#pragma once
+
+#include "input.h"
+#include "library.h"
+#include "ui.h"
+
+#include <string>
+#include <vector>
+
+namespace dr {
+
+class App;
+
+class LibraryScreen {
+public:
+    explicit LibraryScreen(App& app);
+
+    // Back to the start screen (rebuilt: recent books may have changed).
+    void show_root();
+    // Re-reads the current location (after returning from a book, Refresh).
+    void refresh();
+    void handle(const InputEvent& e);
+    void draw(Ui& ui);
+    void tap(float x, float y); // units
+    // Reads one missing book's metadata/cover. True if it did something.
+    bool idle_work();
+    bool has_idle_work() const;
+
+private:
+    struct Location {
+        enum Type { Root, Recent, Folder } type = Root;
+        std::string path, title;
+        std::vector<LibEntry> entries;
+        int selected = 0;
+        int scroll = 0;
+    };
+    void enter(const LibEntry& e, bool from_start);
+    void list(Location& loc);
+    void open_menu();
+    void open_info(const LibEntry& e);
+    int rows_visible(const Ui& ui) const;
+    void keep_visible(int rows);
+    std::string breadcrumb() const;
+    void draw_row(Ui& ui, const LibEntry& e, float y, bool selected);
+
+    App& app_;
+    std::vector<Location> stack_;
+    SortMode sort_ = SortMode::Name;
+    int last_rows_ = 8;
+    float list_top_ = 124;
+    // Next index to check for missing metadata in the current location.
+    size_t meta_cursor_ = 0;
+    bool meta_pending_ = true;
+    bool fetched_any_ = false; // re-sort when the folder's metadata is complete
+};
+
+} // namespace dr

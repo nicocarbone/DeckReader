@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=DeckReader
+GenericName=E-book Reader
+Comment=Controller-friendly e-book reader for Steam Deck and SteamOS
+Exec=deckreader %f
+Icon=io.github.nicocarbone.DeckReader
+Terminal=false
+Categories=Office;Viewer;
+Keywords=ebook;epub;book;reader;steam deck;
+MimeType=application/epub+zip;
+StartupWMClass=deckreader

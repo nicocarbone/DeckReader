@@ -1,0 +1,22 @@
+From: DeckReader
+Subject: [PATCH] Ignore file:// and res:// font URLs in document CSS
+
+An @font-face rule in a book could make FreeType open any local file.
+Fonts embedded in the book still load.
+---
+diff --git a/crengine/src/lvtinydom/ldomdocument.cpp b/crengine/src/lvtinydom/ldomdocument.cpp
+index c4c4659a..14f9cdc1 100644
+--- a/crengine/src/lvtinydom/ldomdocument.cpp
++++ b/crengine/src/lvtinydom/ldomdocument.cpp
+@@ -1926,9 +1926,8 @@ void ldomDocument::registerEmbeddedFonts() {
+             continue;
+         }
+         if (url.startsWithNoCase(lString32("res://")) || url.startsWithNoCase(lString32("file://"))) {
+-            if (!fontMan->RegisterExternalFont(getDocIndex(), item->getUrl(), item->getFace(), item->getBold(), item->getItalic())) {
+-                //CRLog::error("Failed to register external font face: %s file: %s", item->getFace().c_str(), LCSTR(item->getUrl()));
+-            }
++            // A book's CSS must not load files from outside the book.
++            CRLog::warn("Ignoring external font URL in document: %s", LCSTR(url));
+             continue;
+         } else {
+             if (!fontMan->RegisterDocumentFont(getDocIndex(), _container, item->getUrl(), item->getFace(), item->getBold(), item->getItalic())) {
