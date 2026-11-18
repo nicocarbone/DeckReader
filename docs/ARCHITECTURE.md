@@ -143,6 +143,8 @@ sleeps until input or a pending timer (D1).
   libwebp and zstd come from the runtime.
 - Sandbox (D4): X11 + Wayland, IPC, `--device=all` (GPU and controllers),
   book folders read-only, `xdg-config/deckreader`. No network in v0.1.
+- Releases: CI builds the bundle, the installer archive and the GPL
+  source archive from a version tag (`.github/workflows/build.yml`, D27).
 - SteamOS: `scripts/install-steamos.sh` installs the bundle per user and adds
   the non-Steam shortcut with artwork (`scripts/steam_shortcut.py`, shared
   with DeckVideoPlayer).

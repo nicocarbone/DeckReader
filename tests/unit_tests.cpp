@@ -55,6 +55,14 @@ struct Reg {
     static Reg reg_##name(#name, name); \
     static void name()
 
+// A test setting from the environment; unset and empty both mean "not
+// given" (tests/run.sh passes an empty book folder when there is none, as
+// in CI).
+static const char* test_env(const char* name) {
+    const char* v = std::getenv(name);
+    return v && *v ? v : nullptr;
+}
+
 static std::string temp_dir() {
     char tmpl[] = "/tmp/deckreader-test-XXXXXX";
     char* d = mkdtemp(tmpl);
@@ -382,9 +390,9 @@ TEST(canvas_blend) {
 // --- integration: a real book ---------------------------------------------------------------
 
 TEST(engine_open_render) {
-    const char* book = std::getenv("DECKREADER_TEST_BOOK");
-    const char* fonts = std::getenv("DECKREADER_TEST_FONTS");
-    const char* data = std::getenv("DECKREADER_TEST_ENGINE_DATA");
+    const char* book = test_env("DECKREADER_TEST_BOOK");
+    const char* fonts = test_env("DECKREADER_TEST_FONTS");
+    const char* data = test_env("DECKREADER_TEST_ENGINE_DATA");
     if (!book || !fonts || !data) {
         std::fprintf(stderr, "  (skipped engine_open_render: set DECKREADER_TEST_BOOK/_FONTS/_ENGINE_DATA)\n");
         return;
@@ -449,9 +457,9 @@ TEST(engine_open_render) {
 // middle of a book keep the reading position on screen, and going back to
 // the first settings returns to exactly the same page (no drift, D14).
 TEST(engine_position_stability) {
-    const char* dir = std::getenv("DECKREADER_TEST_BOOKS_DIR");
-    const char* fonts = std::getenv("DECKREADER_TEST_FONTS");
-    const char* data = std::getenv("DECKREADER_TEST_ENGINE_DATA");
+    const char* dir = test_env("DECKREADER_TEST_BOOKS_DIR");
+    const char* fonts = test_env("DECKREADER_TEST_FONTS");
+    const char* data = test_env("DECKREADER_TEST_ENGINE_DATA");
     if (!dir || !fonts || !data) {
         std::fprintf(stderr, "  (skipped engine_position_stability: set DECKREADER_TEST_BOOKS_DIR/_FONTS/_ENGINE_DATA)\n");
         return;
@@ -540,7 +548,7 @@ TEST(archive_nested_and_total_ratio) {
 }
 
 TEST(hostile_epubs) {
-    const char* dir = std::getenv("DECKREADER_TEST_HOSTILE_DIR");
+    const char* dir = test_env("DECKREADER_TEST_HOSTILE_DIR");
     if (!dir) {
         std::fprintf(stderr, "  (skipped hostile_epubs: set DECKREADER_TEST_HOSTILE_DIR)\n");
         return;
@@ -585,9 +593,9 @@ TEST(hostile_epubs) {
 // as "↩︎" (U+21A9 U+FE0E), which was drawn "↩?" (D26). The page must look
 // exactly like the same text without them.
 TEST(engine_variation_selectors_invisible) {
-    const char* dir = std::getenv("DECKREADER_TEST_HOSTILE_DIR");
-    const char* fonts = std::getenv("DECKREADER_TEST_FONTS");
-    const char* data = std::getenv("DECKREADER_TEST_ENGINE_DATA");
+    const char* dir = test_env("DECKREADER_TEST_HOSTILE_DIR");
+    const char* fonts = test_env("DECKREADER_TEST_FONTS");
+    const char* data = test_env("DECKREADER_TEST_ENGINE_DATA");
     if (!dir || !fonts || !data) {
         std::fprintf(stderr, "  (skipped engine_variation_selectors_invisible: set DECKREADER_TEST_HOSTILE_DIR/_FONTS/_ENGINE_DATA)\n");
         return;
@@ -619,9 +627,9 @@ TEST(engine_variation_selectors_invisible) {
 // stays visible in dark themes: it is drawn over a plate of the text colour
 // (D26). In light themes the page shows through, as before.
 TEST(engine_line_art_plate_in_dark_themes) {
-    const char* dir = std::getenv("DECKREADER_TEST_HOSTILE_DIR");
-    const char* fonts = std::getenv("DECKREADER_TEST_FONTS");
-    const char* data = std::getenv("DECKREADER_TEST_ENGINE_DATA");
+    const char* dir = test_env("DECKREADER_TEST_HOSTILE_DIR");
+    const char* fonts = test_env("DECKREADER_TEST_FONTS");
+    const char* data = test_env("DECKREADER_TEST_ENGINE_DATA");
     if (!dir || !fonts || !data) {
         std::fprintf(stderr, "  (skipped engine_line_art_plate_in_dark_themes: set DECKREADER_TEST_HOSTILE_DIR/_FONTS/_ENGINE_DATA)\n");
         return;

@@ -97,20 +97,45 @@ awk '/^Pss_Anon|^Pss_File/' /proc/$PID/smaps_rollup
 The log prints the time to the first frame, engine start, book open and
 layout times (`-v` adds per-page render times).
 
-## 6. Releasing
+## 6. CI and releasing
 
-1. Bump `project(... VERSION x.y.z)` in `CMakeLists.txt`, add a
-   `<release>` to the metainfo and a `## x.y.z` section to `CHANGELOG.md`.
-2. `tests/run.sh`, screenshots at both sizes, `scripts/build-flatpak.sh`,
-   `MODE=flatpak` headless run.
+`.github/workflows/build.yml` (D27), on every push to `main`, pull request
+and tag:
+- `tests`: installs Flatpak and the Freedesktop SDK on Ubuntu, then
+  `scripts/dev-build.sh` and `tests/run.sh`. The engine tests on real books
+  are skipped there (no sample books); the generated ones run.
+- `flatpak`: builds the bundle in
+  `ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08`.
+- `release` (tags `v*`): checks that the tag is `v` + the version in
+  `CMakeLists.txt`, then attaches to a GitHub release:
+  `DeckReader.flatpak`; `DeckReader-<tag>.tar.gz`, what users download
+  (bundle in `dist/`, installer scripts, Steam artwork, README, changelog,
+  licence and notices); and `DeckReader-<tag>-sources.tar.gz`, the complete
+  corresponding source the GPL requires (`scripts/make-source-archive.py`).
+  The release text is the version's `CHANGELOG.md` section
+  (`scripts/release-notes.sh`); the job fails if there is none.
+
+To release:
+
+1. Bump `project(... VERSION x.y.z)` in `CMakeLists.txt`; write the
+   `## x.y.z (date)` section of `CHANGELOG.md` for users (new, changed,
+   fixed: it becomes the release text) and a `<release>` with the same date
+   in the metainfo. Update `docs/ROADMAP.md` and the "Current state" of
+   `AGENTS.md`.
+2. `tests/run.sh` (fails while the changelog section or the metainfo
+   entry is missing), screenshots at both sizes, `scripts/build-flatpak.sh`,
+   `MODE=flatpak` headless run. `scripts/release-notes.sh` prints the text
+   CI will publish.
 3. Refresh the README screenshots if the interface changed
    (`tools/make-screenshots.sh`); the metainfo links them on GitHub.
-4. Try the bundle on a Steam Deck (§7) before tagging.
+4. Try the bundle on a Steam Deck (§7).
+5. Commit, `git tag -a vx.y.z -m "DeckReader x.y.z"`, push the commit and
+   the tag: CI publishes the release.
 
-GitHub repository settings that help people find the app (set once, by
-hand): the description "EPUB e-book reader for the Steam Deck and SteamOS
-Game Mode: controller-first, OLED themes, two-page layout, Flatpak", the
-topics `steam-deck`, `steamos`, `ebook-reader`, `epub`, `epub-reader`,
+GitHub repository settings (set once, by hand; already done except the
+social preview): the description "EPUB e-book reader for the Steam Deck and
+SteamOS Game Mode: controller-first, OLED themes, two-page layout, Flatpak",
+the topics `steam-deck`, `steamos`, `ebook-reader`, `epub`, `epub-reader`,
 `ebooks`, `gamepad`, `controller`, `game-mode`, `flatpak`, `linux`,
 `crengine`, `sdl3`, and a social preview image (Settings → Social
 preview; `docs/screenshots/reading.png` works).

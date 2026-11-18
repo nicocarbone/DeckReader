@@ -24,9 +24,6 @@ artwork. See CHANGELOG.md.
   battery drain while reading.
 - Send the soft-hyphen fix upstream to crengine-ng (D3), and the
   variation-selector one (D26).
-- A release workflow like DeckVideoPlayer's: CI builds the bundle and the
-  release archive, plus the complete corresponding source of the bundle
-  (GPL).
 
 ## v0.2: reading comfort
 

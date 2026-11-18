@@ -363,3 +363,36 @@ Also found: `tests/run.sh` piped the unit tests through `grep`, so the
 script's status was grep's and failing checks still printed "all tests
 passed". The output now goes through a log file and the unit tests' own
 status decides.
+
+## D27. CI and releases, as in DeckVideoPlayer
+
+`.github/workflows/build.yml` has DeckVideoPlayer's three jobs (its D36,
+D39, D41), adapted:
+
+- **tests** on Ubuntu: DeckReader builds and tests inside the Freedesktop
+  SDK (D7), so the job installs Flatpak and `org.freedesktop.Sdk//26.08`
+  from Flathub, lifts Ubuntu's AppArmor limit on unprivileged user
+  namespaces (bubblewrap needs them), then runs `scripts/dev-build.sh` and
+  `tests/run.sh`. The engine tests on real books skip without the owner's
+  sample books; the generated ones (hostile archives, variation selectors,
+  line art) run. An empty test setting now counts as unset, which CI hit.
+- **flatpak**: the same flatpak-builder action and container as
+  DeckVideoPlayer, branch `stable` like `scripts/build-flatpak.sh`; the
+  cache key also covers `patches/`.
+- **release** on `v*` tags, the only job allowed to write: fails unless the
+  tag is `v` + the version in `CMakeLists.txt`, then publishes the bundle,
+  the installer archive (bundle in `dist/`, the two installer scripts,
+  Steam artwork, README, changelog, licence, notices) and the corresponding
+  source archive, with the version's changelog section as the text.
+
+**Corresponding source:** the bundle contains GPL binaries (DeckReader,
+and crengine-ng statically linked), so pointing at upstream is not enough.
+`scripts/make-source-archive.py` follows DeckVideoPlayer's script but reads
+the manifest with `scripts/manifest_sources.py` (no PyYAML) and also copies
+the patches, in the order they are applied, next to the module they patch
+(~60 MB, mostly the font archives). The runtime comes from Flathub, which
+publishes its source.
+
+The third-party actions are pinned to the same commits as
+DeckVideoPlayer's; GitHub warns that they target Node.js 20 (run on 24),
+to be updated in both projects together.

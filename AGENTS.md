@@ -23,7 +23,8 @@ non-trivial.
 | Saving (state.json), atomic writes | `src/state.cpp`, `src/fsutil.cpp` |
 | EPUB archive checks | `src/epubguard.cpp` |
 | config.ini | `src/config.cpp`, `data/config.ini`, `docs/CONFIGURATION.md` |
-| Flatpak, dependency pins, engine patch | `packaging/flatpak/io.github.nicocarbone.DeckReader.yml`, `patches/` |
+| Flatpak, dependency pins, engine patches | `packaging/flatpak/io.github.nicocarbone.DeckReader.yml`, `patches/` |
+| CI, releases (bundle, installer archive, GPL source archive, release text) | `.github/workflows/build.yml`, `scripts/make-source-archive.py`, `scripts/release-notes.sh`, `docs/DEVELOPMENT.md` §6 |
 | Steam integration | `scripts/install-steamos.sh`, `scripts/steam_shortcut.py` (shared with DeckVideoPlayer), `packaging/steam/`, `tools/make-artwork.py` |
 
 Reasons behind each choice: `docs/DECISIONS.md` (add an entry when you make
@@ -98,3 +99,5 @@ look at them before finishing.
   with screenshots from Standard Ebooks books (`tools/make-screenshots.sh`);
   they exposed "↩?" back-links and invisible line art on dark themes, both
   fixed in crengine (D26).
+- Public on GitHub (github.com/nicocarbone/DeckReader); CI and the release
+  workflow (D27) are in place; v0.1.0 not tagged yet.

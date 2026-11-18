@@ -3,7 +3,10 @@
 DeckReader's own code is licensed under the GNU General Public License v2.0
 or later (`LICENSE`). The Flatpak bundle also contains the following
 components; flatpak-builder installs each module's licence files in
-`/app/share/licenses/`.
+`/app/share/licenses/`. The complete corresponding source of every release
+is published next to it, as `DeckReader-<version>-sources.tar.gz`: each
+module at its pinned commit or checksum-verified download, the patches, and
+DeckReader's own source (`scripts/make-source-archive.py`, D27).
 
 | Component | Version | Licence | Use |
 |---|---|---|---|

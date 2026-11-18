@@ -289,7 +289,9 @@ Bug reports and testing on other devices help just as much.
 or later** (`LICENSE`), like Deck Video Player. The book engine is
 [crengine-ng](https://gitlab.com/coolreader-ng/crengine-ng)
 (GPL-2.0-or-later), with small patches in `patches/`; the bundled fonts
-are under the SIL Open Font License. Every component and its licence:
+are under the SIL Open Font License. Every release includes the complete
+corresponding source of the bundle (`DeckReader-<version>-sources.tar.gz`).
+Every component and its licence:
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Steam, Steam Deck and SteamOS are trademarks of Valve Corporation. This
