@@ -128,7 +128,7 @@ sleeps until input or a pending timer (D1).
  "settings": {"theme": "oled-black", "font": "literata", "font_size": 24, "line_spacing": 14, ...},
  "books": {"/home/deck/Books/Don Quijote.epub": {
     "xpointer": "/body/DocFragment[7]/body/div/p[12]/text().0",
-    "percent": 3214, "page": 96, "pages": 282, "t": 1795450000,
+    "percent": 3214, "page": 96, "pages": 282, "t": 1795450000123,
     "title": "Don Quijote de la Mancha", "author": "Miguel de Cervantes",
     "bookmarks": [{"xpointer": "...", "percent": 120, "chapter": "Prólogo", "t": 1795449000}]}}}
 ```
@@ -136,8 +136,9 @@ sleeps until input or a pending timer (D1).
 ## 7. Packaging
 
 - Flatpak `io.github.nicocarbone.DeckReader` on `org.freedesktop.Platform`
-  26.08. Modules: libunibreak, utf8proc, crengine-ng (static, with three
-  patches: visible soft hyphen D3, ZIP hardening and no external fonts D22),
+  26.08. Modules: libunibreak, utf8proc, crengine-ng (static, with five
+  patches: visible soft hyphen D3, ZIP hardening and no external fonts D22,
+  invisible variation selectors and line art on dark pages D26),
   the fonts, the app. SDL3, FreeType, HarfBuzz, FriBiDi, libpng, libjpeg,
   libwebp and zstd come from the runtime.
 - Sandbox (D4): X11 + Wayland, IPC, `--device=all` (GPU and controllers),

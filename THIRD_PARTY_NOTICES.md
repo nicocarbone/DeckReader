@@ -7,7 +7,7 @@ components; flatpak-builder installs each module's licence files in
 
 | Component | Version | Licence | Use |
 |---|---|---|---|
-| [crengine-ng](https://gitlab.com/coolreader-ng/crengine-ng) | 0.9.15 + 1 commit, with three patches (`patches/`) | GPL-2.0-or-later | Book engine (statically linked) |
+| [crengine-ng](https://gitlab.com/coolreader-ng/crengine-ng) | 0.9.15 + 1 commit, with five patches (`patches/`) | GPL-2.0-or-later | Book engine (statically linked) |
 | crengine-ng's bundled code: md4c, nanosvg, qimagescale | (in crengine-ng) | MIT; zlib; Qt's LGPL-3.0 / GPL-2.0-or-later option plus BSD-2-Clause (see crengine-ng's `thirdparty/`) | Markdown, SVG images, image scaling |
 | crengine-ng's hyphenation patterns | (in crengine-ng) | various TeX pattern licences (see `crengine/data/hyph/README.md`) | Hyphenation |
 | [libunibreak](https://github.com/adah1972/libunibreak) | 8.0.1 | zlib | Line breaking |
@@ -24,3 +24,8 @@ libjpeg-turbo, libwebp, zstd, zlib, fontconfig.
 Steam, Steam Deck and SteamOS are trademarks of Valve Corporation. This
 project is not affiliated with or endorsed by Valve. The Steam artwork in
 `packaging/steam/` is original (app name and generic shapes).
+
+The README screenshots in `docs/screenshots/` show pages and covers of
+public-domain books in the editions of Standard Ebooks
+(standardebooks.org), which dedicates its work to the public domain (CC0
+1.0). The books are not part of the repository or the app.

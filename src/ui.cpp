@@ -181,14 +181,6 @@ void Ui::icon_usb(float x, float cy, float s, Color c) {
     rect(x0, top + plug, w, s - plug, c, s * 0.1f);
 }
 
-void Ui::icon_recent(float x, float cy, float s, Color c) {
-    float r = s / 2, cx = x + r;
-    circle(cx, cy, r, c);
-    circle(cx, cy, r * 0.8f, col(theme.bg));
-    line(cx, cy, cx, cy - r * 0.5f, s * 0.1f, c);
-    line(cx, cy, cx + r * 0.38f, cy + r * 0.22f, s * 0.1f, c);
-}
-
 void Ui::icon_check(float cx, float cy, float r) {
     circle(cx, cy, r, col(theme.good));
     float t = r * 0.26f;

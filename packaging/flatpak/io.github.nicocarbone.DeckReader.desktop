@@ -7,6 +7,6 @@ Exec=deckreader %f
 Icon=io.github.nicocarbone.DeckReader
 Terminal=false
 Categories=Office;Viewer;
-Keywords=ebook;epub;book;reader;steam deck;
+Keywords=ebook;e-book;epub;book;reader;steam deck;steamos;gamepad;
 MimeType=application/epub+zip;
 StartupWMClass=deckreader

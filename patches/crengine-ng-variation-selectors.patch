@@ -1,0 +1,26 @@
+From: DeckReader
+Subject: [PATCH] Keep variation selectors invisible when a font lacks them
+
+With HarfBuzz shaping, the last font of the fallback chain passes every
+character through filterChar(), which replaced the ones the font has no
+glyph for with def_char ('?'). Variation selectors (U+FE00..U+FE0F,
+U+E0100..U+E01EF) have no glyph in most text fonts, so "↩︎" (U+21A9
+U+FE0E), the back-link of every Standard Ebooks note, was drawn "↩?".
+Pass them to HarfBuzz unchanged: it applies and then hides them.
+---
+diff --git a/crengine/src/lvfont/lvfreetypeface.cpp b/crengine/src/lvfont/lvfreetypeface.cpp
+--- a/crengine/src/lvfont/lvfreetypeface.cpp
++++ b/crengine/src/lvfont/lvfreetypeface.cpp
+@@ -1047,6 +1047,12 @@
+     lChar32 res = getReplacementChar(code);
+     if (res != 0)
+         return res;
++    // Variation selectors are invisible: HarfBuzz uses them to pick a glyph
++    // variant, then hides them. Replacing them with def_char drew a '?'
++    // after the character they qualify, as in "↩︎" (U+21A9 U+FE0E), the
++    // back-link of every Standard Ebooks note.
++    if ((code >= 0xFE00 && code <= 0xFE0F) || (code >= 0xE0100 && code <= 0xE01EF))
++        return code;
+     if (def_char != 0)
+         return def_char;
+     // If nothing found, let code be

@@ -7,8 +7,9 @@ User-facing changes in each release.
 First version.
 
 - **Library:** your book folders (`~/Books` by default), the microSD card and
-  USB drives, recent books and a "Continue reading" shortcut; covers, titles
-  and authors from the books; sort by title, author or last read; book info.
+  USB drives, and your recently read books on the start screen; covers,
+  titles and authors from the books; sort by title, author or last read;
+  book info.
 - **Reading:** real book typography (hyphenation in the book's language,
   justification), two pages side by side on the Deck's wide screen.
 - **Themes:** OLED Black, OLED Dark, Sepia (warm paper) and Day, switched instantly with Y.
@@ -47,3 +48,18 @@ From the first code audit:
 - Messages no longer cover the status overlay's title; a second controller
   no longer interferes with the first.
 - Folders sort by the books' titles as soon as they are read.
+- Recently read books on the start screen, below the folders, as in Deck
+  Video Player (`recently_read` in config.ini sets how many).
+- Optional progress line while reading (Settings → Progress line):
+  percentage read, pages left in the chapter and in the book.
+- Page margins are now right from the first page (they were smaller than
+  set until the first settings change, most visibly on a 4K screen).
+
+Found while making the README screenshots with Standard Ebooks books:
+
+- Illustrations drawn in black ink on a transparent background (engravings,
+  diagrams) were invisible on the OLED themes; they now sit on a light plate
+  in the text colour.
+- Note back-links ("↩") no longer show a stray "?" after them.
+- The left-stick scrub shows the same pages and percentage as the status
+  overlay.

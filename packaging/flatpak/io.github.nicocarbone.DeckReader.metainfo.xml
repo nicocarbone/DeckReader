@@ -12,23 +12,56 @@
     <p>
       A lightweight EPUB reader designed for the SteamOS game mode, companion
       to Deck Video Player: browse your book folders and read entirely with
-      the Steam Deck controls.
+      the Steam Deck controls, without leaving Game Mode.
     </p>
     <p>
-      Beta software, not yet tested on a Steam Deck, provided without any
-      warranty.
+      Beta software: so far it has only been tried on a Steam Deck OLED, and
+      comes without any warranty.
     </p>
     <ul>
-      <li>EPUB 2 and 3 with real book typography: hyphenation, justification, embedded images</li>
-      <li>Two pages side by side on the wide screen, one page when the text is large</li>
+      <li>EPUB 2 and 3 with real book typography: hyphenation, justification, illustrations</li>
+      <li>Two pages side by side on the wide screen, or one page</li>
       <li>OLED black, OLED dark, sepia and day themes, switched instantly</li>
       <li>Literata, Inter and Atkinson Hyperlegible fonts; size, spacing and margins</li>
       <li>Contents, bookmarks, and a left-stick scrub through the whole book</li>
       <li>Reading position saved on every page turn, safe against sleep and power loss</li>
-      <li>Library from ~/Books and the microSD card, with covers and recent books</li>
-      <li>Status overlay with chapter, pages, battery and clock</li>
+      <li>Library from ~/Books, the microSD card and USB drives, with covers and recently read books</li>
+      <li>Status overlay with chapter, pages, battery and clock, and an optional progress line</li>
+      <li>Works offline: no network access, no account</li>
     </ul>
   </description>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Reading two pages side by side in the OLED Black theme</caption>
+      <image>https://raw.githubusercontent.com/nicocarbone/DeckReader/main/docs/screenshots/reading.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Start screen with recently read books</caption>
+      <image>https://raw.githubusercontent.com/nicocarbone/DeckReader/main/docs/screenshots/start.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Library with covers and reading progress</caption>
+      <image>https://raw.githubusercontent.com/nicocarbone/DeckReader/main/docs/screenshots/library.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Reading settings</caption>
+      <image>https://raw.githubusercontent.com/nicocarbone/DeckReader/main/docs/screenshots/settings.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Sepia theme with the progress line</caption>
+      <image>https://raw.githubusercontent.com/nicocarbone/DeckReader/main/docs/screenshots/sepia.png</image>
+    </screenshot>
+  </screenshots>
+  <keywords>
+    <keyword>ebook</keyword>
+    <keyword>e-book</keyword>
+    <keyword>epub</keyword>
+    <keyword>book</keyword>
+    <keyword>reader</keyword>
+    <keyword>Steam Deck</keyword>
+    <keyword>SteamOS</keyword>
+    <keyword>gamepad</keyword>
+  </keywords>
   <launchable type="desktop-id">io.github.nicocarbone.DeckReader.desktop</launchable>
   <content_rating type="oars-1.1"/>
   <supports>
@@ -40,8 +73,9 @@
   <url type="bugtracker">https://github.com/nicocarbone/DeckReader/issues</url>
   <url type="donation">https://ko-fi.com/nicocarbone</url>
   <releases>
+    <!-- Set the date when tagging the release (docs/DEVELOPMENT.md §6). -->
     <release version="0.1.0" date="2026-11-17">
-      <description><p>First version: local library, reader, themes, contents and bookmarks.</p></description>
+      <description><p>First version: local library with recently read books, reader, themes, contents, bookmarks and an optional progress line.</p></description>
     </release>
   </releases>
 </component>

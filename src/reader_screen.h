@@ -46,6 +46,18 @@ public:
     void save_position();
 
 private:
+    // Where a screen (starting at a page) is in the book. Pages are counted
+    // one by one, also when two are shown side by side.
+    struct Progress {
+        int percent = 0;       // 0..100, the shown pages counting as read
+        int chapter_left = -1; // pages after this screen in its chapter; -1 = no chapters
+        int book_left = 0;     // pages after this screen
+        bool last = false;     // the last screen
+    };
+    Progress progress_at(int page) const;
+    std::string chapter_left_text(const Progress& p) const;
+    void draw_progress_line(int page, uint32_t* px, int w, int h);
+
     struct Cached {
         int page = -1;
         SDL_Texture* tex = nullptr;

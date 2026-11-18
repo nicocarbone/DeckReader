@@ -31,13 +31,17 @@ public:
 
 private:
     struct Location {
-        enum Type { Root, Recent, Folder } type = Root;
+        enum Type { Root, Folder } type = Root;
         std::string path, title;
         std::vector<LibEntry> entries;
         int selected = 0;
         int scroll = 0;
     };
     void enter(const LibEntry& e, bool from_start);
+    // Nearest row from i that is not a section header (dir first).
+    int selectable(const Location& loc, int i, int dir) const;
+    // Moves the cursor one selectable row (wrapping or not).
+    void step(Location& loc, int dir, bool wrap);
     void list(Location& loc);
     void open_menu();
     void open_info(const LibEntry& e);

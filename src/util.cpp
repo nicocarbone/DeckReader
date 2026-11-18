@@ -22,6 +22,12 @@ std::string to_lower(std::string s) {
     return s;
 }
 
+std::string to_upper(std::string s) {
+    for (char& c : s)
+        c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    return s;
+}
+
 bool starts_with(const std::string& s, const std::string& prefix) {
     return s.compare(0, prefix.size(), prefix) == 0;
 }
@@ -206,6 +212,12 @@ std::string hex64(uint64_t v) {
 
 int64_t wall_time() {
     return static_cast<int64_t>(std::time(nullptr));
+}
+
+int64_t wall_time_ms() {
+    timespec ts{};
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return static_cast<int64_t>(ts.tv_sec) * 1000 + ts.tv_nsec / 1000000;
 }
 
 uint64_t mono_ms() {

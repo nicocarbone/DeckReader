@@ -294,3 +294,72 @@ Every item was checked against the code (and crengine-ng's) before acting.
   info for the About screen), as in DeckVideoPlayer.
 - Not done yet (ROADMAP): pruning cache entries of deleted books (OPT-3),
   faster re-layouts (OPT-5).
+
+## D23. Recently read books on the start screen, as in DeckVideoPlayer
+
+The start screen lists the sources, then a "Recently read" section header
+(small capitals over a thin line, not selectable) and up to
+`[interface] recently_read` books (5; 0 hides them), each tagged with where
+it is ("Local", "SD Card", "USB") and its progress, like DeckVideoPlayer's
+"Recently played". Missing files are left out; Menu → *Remove from recently
+read* hides one until it is read again. On a fresh start the cursor waits on
+the book read last, so A resumes it. Replaces v0.1 test builds' "Continue
+reading" row and "Recent books" folder. Last-read times are in milliseconds
+so books opened within a second keep their order.
+
+## D24. Optional progress line
+
+*Reading → Progress line* (off by default) adds a band under the text with
+the pages left in the chapter (left) and the percentage and pages left in
+the book (right), in the theme's ink at 60%. It is drawn into each page
+image when the page is rendered, so page turns cost nothing more; the
+book's bottom margin grows by the band (30 units). Pages are counted one by
+one; the shown pages count as read. The HUD and the library use the same
+counting.
+
+## D25. The screen size goes to crengine before the settings
+
+crengine caps page margins at a fifth of the view's size when they are
+applied, and a new view is 400x200: `Book::configure` applied the settings
+before the first `Resize`, so on every book's first layout the margins were
+cut to 40 px vertically and 80 px horizontally (at 4K every margin was too
+small; on the Deck the progress line's band was only partly reserved), and
+the first settings change then shifted the layout. `Resize` now comes first.
+Found while measuring the progress line at 4K; test: `engine_open_render`
+checks that the bottom margin stays blank on the first layout at 4K.
+
+## D26. Two engine fixes found with Standard Ebooks books
+
+Making the README screenshots with Standard Ebooks editions (the best
+source of free classics, so a common case) showed two bugs, both now
+crengine-ng patches with tests on small generated books
+(`tests/make-hostile-epubs.py`):
+
+- **"↩?" after every note back-link.** Standard Ebooks writes back-links
+  as U+21A9 followed by U+FE0E (variation selector: "text style"). With
+  HarfBuzz, the last font of the fallback chain passes each character
+  through `filterChar()`, which replaced the selector (no glyph in any
+  bundled font) with `?`. Variation selectors now go to HarfBuzz
+  unchanged; it applies and hides them
+  (`crengine-ng-variation-selectors.patch`; test
+  `engine_variation_selectors_invisible` compares the page with and
+  without them, for every font).
+- **Line art invisible on the dark themes.** Engravings, diagrams and
+  ornaments are mostly black ink on a transparent background; on OLED Black
+  the ink was drawn black on black (the default theme). On a page whose
+  background is darker than its text, transparent and translucent pixels
+  are now drawn over a plate of the text colour; opaque images (photos,
+  covers) and light pages are unchanged (`crengine-ng-image-plate.patch`;
+  test `engine_line_art_plate_in_dark_themes`).
+  Alternatives: inverting such images (Standard Ebooks' CSS does this for
+  diagrams in dark mode) needs to know the whole image is monochrome before
+  drawing it, which crengine's line-by-line decoder doesn't, and inverts
+  photos with transparency too; crengine's own `setInvertImages` inverts
+  every image for a night mode that inverts the whole screen. A plate in
+  the text colour is what Standard Ebooks' CSS does for engravings, keeps
+  the art as printed, and is no brighter than the text.
+
+Also found: `tests/run.sh` piped the unit tests through `grep`, so the
+script's status was grep's and failing checks still printed "all tests
+passed". The output now goes through a log file and the unit tests' own
+status decides.

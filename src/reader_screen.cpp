@@ -59,14 +59,83 @@ void ReaderScreen::save_position() {
     BookState& st = app_.state.at(book_.path());
     int cur = book_.current_page(), count = book_.page_count();
     st.xpointer = book_.position();
-    st.percent = book_.percent();
+    st.percent = progress_at(cur).percent * 100; // same counting as the HUD and progress line
     st.page = cur;
     st.pages = count;
     st.finished = count > 0 && cur + book_.pages_per_screen() >= count;
     if (st.finished)
         st.percent = 10000;
-    st.last_read = wall_time();
+    st.last_read = wall_time_ms();
+    st.hidden = false; // read again: back among the recent books
     app_.state.mark_dirty();
+}
+
+// --- progress ----------------------------------------------------------------
+
+ReaderScreen::Progress ReaderScreen::progress_at(int page) const {
+    Progress p;
+    const int n = std::max(1, book_.page_count()), pps = book_.pages_per_screen();
+    const int shown_end = std::min(n, page + pps); // pages up to here are read
+    p.last = shown_end >= n;
+    p.percent = p.last ? 100 : shown_end * 100 / n;
+    p.book_left = n - shown_end;
+    if (!book_.toc().empty()) {
+        int next = book_.next_chapter_page(page);
+        p.chapter_left = next < 0 ? p.book_left : std::max(0, next - shown_end);
+    }
+    return p;
+}
+
+std::string ReaderScreen::chapter_left_text(const Progress& p) const {
+    if (p.chapter_left < 0)
+        return {};
+    if (p.chapter_left == 0)
+        return p.last ? std::string() : "Last page of the chapter";
+    return p.chapter_left == 1 ? "1 page left in chapter" : strf("%d pages left in chapter", p.chapter_left);
+}
+
+// The optional progress line (D24), drawn into the page image itself, so a
+// page turn costs nothing more. Pages left in the chapter under the left
+// page; percentage and pages left in the book under the right one.
+void ReaderScreen::draw_progress_line(int page, uint32_t* px, int w, int h) {
+    const ReaderSettings& s = app_.state.settings;
+    const float u = app_.page_unit();
+    const Progress p = progress_at(page);
+    const std::string left = chapter_left_text(p);
+    const std::string right = p.last ? std::string("100% \xC2\xB7 End of the book")
+                            : p.book_left == 1 ? strf("%d%% \xC2\xB7 1 page left", p.percent)
+                                               : strf("%d%% \xC2\xB7 %d pages left", p.percent, p.book_left);
+    const float size = 15 * u;
+    const int band = std::max(1, static_cast<int>(std::lround(PROGRESS_LINE_UNITS * u)));
+    const int cy = static_cast<int>(std::lround(h - (s.vert_margin + PROGRESS_LINE_UNITS) * u / 2));
+    const int y0 = std::clamp(cy - band / 2, 0, std::max(0, h - band));
+    Canvas strip;
+    strip.resize(w, band);
+    const Color ink = Color::hex(THEMES[s.theme].text, 0.6f);
+    const float base = static_cast<float>(cy - y0) + app_.text.cap_height(size, false) / 2;
+    const float margin = std::max(s.side_margin, 16) * u;
+    const float half = w / 2.0f - margin - 20 * u;
+    if (!left.empty())
+        app_.text.draw(strip, margin, base, app_.text.ellipsize(left, size, false, half), size, false, ink);
+    const std::string r = app_.text.ellipsize(right, size, false, half);
+    if (!r.empty())
+        app_.text.draw(strip, w - margin - app_.text.measure(r, size, false), base, r, size, false, ink);
+    // Premultiplied strip over the opaque page.
+    for (int y = 0; y < band && y0 + y < h; y++) {
+        uint32_t* dst = px + static_cast<size_t>(y0 + y) * w;
+        const uint32_t* src = strip.data() + static_cast<size_t>(y) * w;
+        for (int x = 0; x < w; x++) {
+            uint32_t a = src[x] >> 24;
+            if (!a)
+                continue;
+            uint32_t out = 0;
+            for (int sh = 0; sh <= 16; sh += 8) {
+                uint32_t c = ((src[x] >> sh) & 0xFF) + (((dst[x] >> sh) & 0xFF) * (255 - a) + 127) / 255;
+                out |= std::min<uint32_t>(c, 255) << sh;
+            }
+            dst[x] = out;
+        }
+    }
 }
 
 // --- page textures ----------------------------------------------------------
@@ -101,6 +170,8 @@ SDL_Texture* ReaderScreen::texture_for(int page, bool render_if_missing) {
     uint64_t t0 = mono_ms();
     if (!book_.render(page, pixels_.data(), w, h))
         return nullptr;
+    if (app_.state.settings.progress_line)
+        draw_progress_line(page, pixels_.data(), w, h);
     app_.display.upload(slot->tex, pixels_.data(), w * 4);
     LOG_D("page %d rendered in %llu ms", page, static_cast<unsigned long long>(mono_ms() - t0));
     slot->page = page;
@@ -324,6 +395,10 @@ void ReaderScreen::open_settings() {
     adjust("Theme", [s] { return std::string(THEMES[s->theme].name); }, [this, s](int d) {
         s->theme = (s->theme + d + THEME_COUNT) % THEME_COUNT;
         settings_changed(false);
+    });
+    adjust("Progress line", [s] { return std::string(s->progress_line ? "On" : "Off"); }, [this, s](int) {
+        s->progress_line = !s->progress_line;
+        settings_changed(true);
     });
     adjust("Font", [s] { return std::string(FONTS[std::max(0, s->font_index())].name); }, [this, s](int d) {
         s->font = FONTS[(std::max(0, s->font_index()) + d + FONT_COUNT) % FONT_COUNT].id;
@@ -610,11 +685,16 @@ void ReaderScreen::draw_scrub(Ui& ui) {
     const int n = std::max(1, book_.page_count());
     float w = std::min(ui.W() - 80, 760.0f), x = (ui.W() - w) / 2, h = 104, y = ui.H() - h - 28;
     ui.rect(x, y, w, h, ui.col(0x000000, 0.86f), 16);
-    ui.text(x + 28, y + 30, strf("Page %d of %d", scrub_page_ + 1, n), 20, ui.col(th.text), true);
-    ui.text(x + w - 28, y + 30, strf("%d%%", static_cast<int>(100.0 * (scrub_page_ + 1) / n)), 18,
-            ui.col(th.subtext), false, ALIGN_RIGHT);
+    const int pps = book_.pages_per_screen();
+    const std::string pos = pps > 1 && scrub_page_ + 1 < n
+                                ? strf("Pages %d\xE2\x80\x93%d of %d", scrub_page_ + 1, std::min(n, scrub_page_ + pps), n)
+                                : strf("Page %d of %d", scrub_page_ + 1, n);
+    ui.text(x + 28, y + 30, pos, 20, ui.col(th.text), true);
+    // The same percentage as the status overlay and the progress line.
+    const int percent = progress_at(scrub_page_).percent;
+    ui.text(x + w - 28, y + 30, strf("%d%%", percent), 18, ui.col(th.subtext), false, ALIGN_RIGHT);
     ui.text(x + 28, y + 58, book_.chapter_title_at(scrub_page_), 16, ui.col(th.subtext), false, ALIGN_LEFT, w - 56);
-    ui.progress(x + 28, y + 80, w - 56, 6, static_cast<float>(scrub_page_ + 1) / n, ui.col(th.accent), ui.col(th.panel2));
+    ui.progress(x + 28, y + 80, w - 56, 6, percent / 100.0f, ui.col(th.accent), ui.col(th.panel2));
 }
 
 void ReaderScreen::draw_hud(Ui& ui) {
@@ -655,15 +735,12 @@ void ReaderScreen::draw_hud(Ui& ui) {
     std::string pos = pps > 1 && cur + 1 < n ? strf("Pages %d\xE2\x80\x93%d of %d", cur + 1, std::min(n, cur + pps), n)
                                              : strf("Page %d of %d", cur + 1, n);
     float tx = 40 + ui.text(40, by + 72, pos, 18, white, true);
-    // On the last screen, 100% (as the library shows), not crengine's 99%.
-    const bool last = cur + pps >= n;
-    std::string extra = strf("%d%%", last ? 100 : book_.percent() / 100);
-    int next = book_.next_chapter_page(cur);
-    if (next > 0) {
-        int left = next - cur - pps + 1;
-        if (left > 0)
-            extra += left == 1 ? " \xC2\xB7 1 page left in chapter" : strf(" \xC2\xB7 %d pages left in chapter", left);
-    }
+    // Same counting as the progress line and the library (D24).
+    const Progress prog = progress_at(cur);
+    std::string extra = strf("%d%%", prog.percent);
+    const std::string chapter_left = chapter_left_text(prog);
+    if (!chapter_left.empty())
+        extra += " \xC2\xB7 " + chapter_left;
     // No button hints under a drawer menu: they belong to reading, and the
     // drawer would cut them in half.
     std::vector<Hint> hints;

@@ -131,6 +131,7 @@ The Steam and "…" buttons stay with Steam. Keyboard keys match `DeckVideoPlaye
 
 - **Suspend/Resume Safety:** The reading position is saved on every page turn (the first change after a pause immediately, then at most every 2 s), when the window loses focus (Steam overlay), when the book is closed and on exit (SIGTERM from Steam included). No sleep signal is needed: whatever was on screen when SteamOS slept is already on disk.
 - **Cursor Management:** Hide the mouse cursor automatically in Game Mode unless mouse/trackpad pointer movement is detected (consistent with `DeckVideoPlayer`).
+- **Optional progress line:** a reading setting adds a discreet line under the text with the percentage read, the pages left in the chapter and the pages left in the book, in its own band (text never runs under it), at no cost to page turns.
 - **Minimalist HUD (hidden by default while reading):** Styled consistently with `DeckVideoPlayer`'s OSD, displaying Book Title, Chapter Title, Current/Total Pages, Percentage Read, pages left in the chapter, and **System Battery % + Local Time** (essential in fullscreen Gamescope where the system top bar is hidden).
 
 ---
@@ -141,7 +142,7 @@ The Steam and "…" buttons stay with Steam. Keyboard keys match `DeckVideoPlaye
 
 - Configurable root book folders in `~/.config/deckreader/config.ini`, defaulting to `~/Books`, plus removable microSD storage and USB drives under `/run/media/` (detected from `/proc/self/mountinfo` and named "SD Card" / "USB drive", as in `DeckVideoPlayer`).
 - The Flatpak sandbox can read `~/Books`, Documents, Downloads and removable media (read-only, not the whole home folder, as in `DeckVideoPlayer`'s D39). Other folders need `flatpak override --user --filesystem=PATH:ro io.github.nicocarbone.DeckReader`, documented in `config.ini`.
-- Support both hierarchical folder browsing (consistent with `DeckVideoPlayer`'s file browser) and a flat "Recent Books" view, with a "Continue reading" shortcut on the start screen.
+- Support hierarchical folder browsing (consistent with `DeckVideoPlayer`'s file browser) and list the recently read books on the start screen below the sources, under a section header, as `DeckVideoPlayer` lists recently played videos: each with its progress and where it is ("Local", "SD Card", "USB"); how many is set in `config.ini` (`recently_read`, 0 hides them); a book can be removed from the list; the cursor starts on the book read last.
 - Extract and cache EPUB titles, authors and cover thumbnails for fast library browsing (filled lazily, never blocking input).
 - Primary format: `.epub` (EPUB 2 and EPUB 3). **DRM-protected books are not supported.**
 

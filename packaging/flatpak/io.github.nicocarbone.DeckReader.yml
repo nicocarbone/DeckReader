@@ -90,6 +90,13 @@ modules:
         path: ../../patches/crengine-ng-zip-hardening.patch
       - type: patch
         path: ../../patches/crengine-ng-no-external-fonts.patch
+      # Variation selectors stay invisible: no "↩?" in Standard Ebooks
+      # notes (D26).
+      - type: patch
+        path: ../../patches/crengine-ng-variation-selectors.patch
+      # Line art stays visible on dark pages (D26).
+      - type: patch
+        path: ../../patches/crengine-ng-image-plate.patch
 
   # Bundled fonts (all SIL Open Font License 1.1, D9).
   - name: fonts

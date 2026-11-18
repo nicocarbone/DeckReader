@@ -409,6 +409,31 @@ TEST(engine_open_render) {
     CHECK_EQ(b.pages_per_screen(), 2);
     std::vector<uint32_t> px(1280 * 800);
     CHECK(b.render(0, px.data(), 1280, 800));
+    {
+        // Margins hold from the very first layout, also at 4K (D25): with
+        // 96 + 30 units at the bottom, the last 120 units stay blank.
+        Book big;
+        CHECK(big.open(book, &err));
+        ReaderSettings m;
+        m.vert_margin = 96;
+        m.progress_line = true;
+        const int W = 3840, H = 2160;
+        const float u = H / 800.0f;
+        CHECK(big.configure(m, W, H, u));
+        std::vector<uint32_t> p4(static_cast<size_t>(W) * H);
+        int bad_rows = 0;
+        for (int page : {big.page_count() / 3, big.page_count() / 2}) {
+            CHECK(big.render(page, p4.data(), W, H));
+            const uint32_t bg = p4[static_cast<size_t>(H - 1) * W] & 0xFFFFFF;
+            for (int y = H - static_cast<int>(120 * u); y < H; y++)
+                for (int x = 0; x < W; x++)
+                    if ((p4[static_cast<size_t>(y) * W + x] & 0xFFFFFF) != bg && x != W / 2 && std::abs(x - W / 2) > 3) {
+                        bad_rows++;
+                        break;
+                    }
+        }
+        CHECK_EQ(bad_rows, 0);
+    }
     b.go_to_page(10);
     std::string pos = b.position();
     CHECK(!pos.empty());
@@ -454,6 +479,10 @@ TEST(engine_position_stability) {
     v = ReaderSettings{};
     v.side_margin = 96;
     v.text_aa = 3;
+    variants.push_back(v);
+    v = ReaderSettings{};
+    v.progress_line = true;
+    v.vert_margin = 96;
     variants.push_back(v);
     int books = 0;
     for (const DirEntry& f : files) {
@@ -552,6 +581,78 @@ TEST(hostile_epubs) {
     }
 }
 
+// Variation selectors are invisible: Standard Ebooks writes its back-links
+// as "↩︎" (U+21A9 U+FE0E), which was drawn "↩?" (D26). The page must look
+// exactly like the same text without them.
+TEST(engine_variation_selectors_invisible) {
+    const char* dir = std::getenv("DECKREADER_TEST_HOSTILE_DIR");
+    const char* fonts = std::getenv("DECKREADER_TEST_FONTS");
+    const char* data = std::getenv("DECKREADER_TEST_ENGINE_DATA");
+    if (!dir || !fonts || !data) {
+        std::fprintf(stderr, "  (skipped engine_variation_selectors_invisible: set DECKREADER_TEST_HOSTILE_DIR/_FONTS/_ENGINE_DATA)\n");
+        return;
+    }
+    CHECK(engine::init(fonts, data, temp_dir()));
+    const int W = 1280, H = 800;
+    std::vector<uint32_t> with(W * H), without(W * H);
+    for (int f = 0; f < FONT_COUNT; f++) {
+        ReaderSettings s;
+        s.font = FONTS[f].id;
+        for (auto [name, px] : {std::pair<const char*, uint32_t*>{"/vs-with.epub", with.data()},
+                                {"/vs-without.epub", without.data()}}) {
+            Book b;
+            std::string err;
+            CHECK(b.open(std::string(dir) + name, &err));
+            CHECK(b.configure(s, W, H, 1.0f));
+            CHECK(b.render(0, px, W, H));
+        }
+        int ink = 0;
+        for (uint32_t p : with)
+            ink += (p & 0xFFFFFF) != (with[0] & 0xFFFFFF);
+        CHECK(ink > 1000); // something was drawn
+        CHECK(with == without);
+    }
+    engine::shutdown();
+}
+
+// Black-on-transparent line art (Standard Ebooks' engravings, diagrams)
+// stays visible in dark themes: it is drawn over a plate of the text colour
+// (D26). In light themes the page shows through, as before.
+TEST(engine_line_art_plate_in_dark_themes) {
+    const char* dir = std::getenv("DECKREADER_TEST_HOSTILE_DIR");
+    const char* fonts = std::getenv("DECKREADER_TEST_FONTS");
+    const char* data = std::getenv("DECKREADER_TEST_ENGINE_DATA");
+    if (!dir || !fonts || !data) {
+        std::fprintf(stderr, "  (skipped engine_line_art_plate_in_dark_themes: set DECKREADER_TEST_HOSTILE_DIR/_FONTS/_ENGINE_DATA)\n");
+        return;
+    }
+    CHECK(engine::init(fonts, data, temp_dir()));
+    const int W = 1280, H = 800;
+    std::vector<uint32_t> px(W * H);
+    for (int t = 0; t < THEME_COUNT; t++) {
+        ReaderSettings s;
+        s.theme = t;
+        Book b;
+        std::string err;
+        CHECK(b.open(std::string(dir) + "/line-art.epub", &err));
+        CHECK(b.configure(s, W, H, 1.0f));
+        b.set_colors(THEMES[t].bg, THEMES[t].text); // as the reader does
+        CHECK(b.render(0, px.data(), W, H));
+        int plate = 0, ink = 0;
+        for (uint32_t p : px) {
+            plate += (p & 0xFFFFFF) == THEMES[t].text;
+            ink += (p & 0xFFFFFF) == 0;
+        }
+        if (THEMES[t].dark) {
+            CHECK(plate > 30000); // the transparent part of the 300x300 picture, at least
+            CHECK(ink > 3000);    // and its black lines on it
+        } else {
+            CHECK(plate < 1000);
+        }
+    }
+    engine::shutdown();
+}
+
 TEST(state_save_failure_backs_off) {
     StateStore s("/nonexistent-deckreader-dir/state.json");
     s.mark_dirty();
@@ -619,6 +720,55 @@ TEST(toc_out_of_order) {
     CHECK_EQ(toc_next_page(toc, 95), -1);
     CHECK_EQ(toc_prev_page(toc, 45), 40);
     CHECK_EQ(toc_prev_page(toc, 2), -1);
+}
+
+TEST(start_screen_recents) {
+    std::string d = temp_dir();
+    make_dirs(d + "/Books/Sub");
+    for (const char* f : {"/Books/a.epub", "/Books/Sub/b.epub", "/elsewhere.epub", "/hidden.epub"})
+        write_file_atomic(d + f, "x");
+    Config cfg = parse_config("[library]\nfolder = " + d + "/Books\nremovable_media = no\n"
+                              "[interface]\nrecently_read = 3\n", "/h");
+    StateStore st;
+    st.at(d + "/Books/a.epub").last_read = 10;
+    st.at(d + "/Books/Sub/b.epub").last_read = 30;
+    st.at(d + "/elsewhere.epub").last_read = 20;
+    st.at(d + "/gone.epub").last_read = 40; // file deleted: left out
+    BookState& h = st.at(d + "/hidden.epub");
+    h.last_read = 50;
+    h.hidden = true; // "Remove from recently read"
+    std::vector<LibEntry> v = list_root(cfg, st, "", "/h");
+    CHECK_EQ(v.size(), 5u); // source, header, three books
+    if (v.size() == 5) {
+        CHECK(v[0].kind == LibEntry::Source);
+        CHECK(v[1].kind == LibEntry::Header);
+        CHECK_EQ(v[2].path, d + "/Books/Sub/b.epub"); // most recent first
+        CHECK_EQ(v[2].tag, "Local");
+        CHECK(v[2].recent);
+        CHECK_EQ(v[3].path, d + "/elsewhere.epub");
+        CHECK_EQ(v[3].tag, ""); // not under any source
+    }
+    cfg.recently_read = 0;
+    CHECK_EQ(list_root(cfg, st, "", "/h").size(), 1u); // no header without books
+    Config bad = parse_config("[interface]\nrecently_read = 99\n", "/h");
+    CHECK_EQ(bad.recently_read, 5);
+    CHECK_EQ(bad.warnings.size(), 1u);
+}
+
+TEST(state_hidden_and_progress_line) {
+    StateStore s;
+    s.settings.progress_line = true;
+    s.at("/a").last_read = 5;
+    s.at("/b").last_read = 9;
+    s.at("/b").hidden = true;
+    StateStore t;
+    CHECK(t.from_json(s.to_json()));
+    CHECK(t.settings.progress_line);
+    CHECK(t.find("/b")->hidden);
+    CHECK_EQ(t.recent(10).size(), 1u);
+    ReaderSettings a, b;
+    b.progress_line = true;
+    CHECK(a.layout_differs(b)); // the band under the text changes the layout
 }
 
 TEST(input_two_controllers) {

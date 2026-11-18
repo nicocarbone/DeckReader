@@ -1,5 +1,7 @@
 // What the library shows: sources (configured folders, microSD cards and
-// USB drives), folder listings, recent books. No drawing here.
+// USB drives), folder listings, and the start screen's recently read books
+// below a section header, as DeckVideoPlayer lists recently played videos
+// (D23). No drawing here.
 #pragma once
 
 #include "config.h"
@@ -12,13 +14,14 @@
 namespace dr {
 
 struct LibEntry {
-    enum Kind { Book, Folder, Recent, Source } kind = Book;
+    enum Kind { Book, Folder, Source, Header } kind = Book;
     std::string path;    // file or folder
     std::string name;    // folder or file name, or source label
     std::string detail;  // second line (source path, "Not found"...)
     enum Icon { IconFolder, IconCard, IconUsb } icon = IconFolder;
-    bool missing = false;    // configured folder that doesn't exist
-    bool continue_row = false; // "Continue reading" shortcut on the start screen
+    bool missing = false; // configured folder that doesn't exist
+    bool recent = false;  // a recently read book on the start screen
+    std::string tag;      // where a recent book is: "Local", "SD Card", "USB"
     int64_t mtime = 0;
 };
 
@@ -27,12 +30,13 @@ const char* sort_label(SortMode m);
 
 bool is_book_file(const std::string& name);
 
-// The start screen: "Continue reading", "Recent books", then each source.
+// The start screen: each source, then a "Recently read" header and up to
+// cfg.recently_read books (files that are gone or on a drive that isn't
+// inserted are left out).
 std::vector<LibEntry> list_root(const Config& cfg, StateStore& state, const std::string& mountinfo_text,
                                 const std::string& home);
 // Subfolders first, then .epub files.
 std::vector<LibEntry> list_folder(const std::string& dir);
-std::vector<LibEntry> list_recent(StateStore& state, size_t max);
 // Folders stay first; books ordered by title/author/last read. Titles come
 // from the metadata cache when known, else the file name.
 void sort_entries(std::vector<LibEntry>& entries, SortMode mode, MetaCache& meta, StateStore& state);

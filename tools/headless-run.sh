@@ -11,6 +11,8 @@
 #   MODE=dev|flatpak   dev = .dev/app (scripts/dev-build.sh, default),
 #                      flatpak = the installed io.github.nicocarbone.DeckReader
 #   BOOKS=DIR          library folder (default: .dev/sample_ebooks)
+#   HOME_DIR=DIR       HOME for the app (dev mode), so that a BOOKS folder
+#                      inside it is shown as "~/..." (screenshots)
 #   W=1280 H=800       screen size (try W=3840 H=2160 for a TV)
 #   KEEP=1             keep reading state from the previous run
 #   LOG=FILE           log file (default: .dev/headless.log)
@@ -44,6 +46,7 @@ sed -e "s|^folder = .*|folder = $books_esc|" \
     "$root/data/config.ini" > "$CFG/config/config.ini"
 
 envs="DECKREADER_CONFIG_DIR=$CFG/config DECKREADER_DATA_DIR=$CFG/data DECKREADER_CACHE_DIR=$CFG/cache"
+[ -n "${HOME_DIR:-}" ] && envs="$envs HOME=$HOME_DIR"
 args="--window --size ${W}x$H"
 if [ "$BACKEND" = offscreen ]; then
     envs="$envs SDL_VIDEO_DRIVER=offscreen"

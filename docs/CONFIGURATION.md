@@ -38,6 +38,7 @@ flatpak override --user --filesystem=/path/to/books:ro io.github.nicocarbone.Dec
 | Key | Default | Meaning |
 |---|---|---|
 | `ui_scale` | `1.0` | Size of menus and overlays (0.5–3); not the book's text. |
+| `recently_read` | `5` | Recently read books listed on the start screen, below the folders (0–20; `0` hides the list). Menu → *Remove from recently read* hides one; reading it again brings it back. |
 | `clock` | `24h` | `24h` or `12h` in the status overlay. |
 | `accent_color` | `#10A38F` | Colour of selections and highlights (teal; DeckVideoPlayer's blue is `#1A9FFF`). |
 

@@ -56,6 +56,15 @@ Script commands are documented in `src/testscript.h` (`key:`, `stick:`,
 **Visual changes:** take screenshots at 1280×800 **and** 3840×2160 and look
 at them before finishing.
 
+**README screenshots** (`docs/screenshots/`): `tools/make-screenshots.sh`.
+It downloads eight public-domain books from Standard Ebooks (CC0) into
+`.dev/screens/home/Books` once, runs the app with that folder as `HOME`
+(so the library shows `~/Books`), reads five books to different points for
+"Recently read", then takes the nine pictures and recompresses them. Look
+at each one before committing: a change in the app can move what a key
+press reaches. Never use `.dev/sample_ebooks` for pictures that are
+published (copyrighted books).
+
 ## 4. Tests
 
 `tests/run.sh` runs:
@@ -63,13 +72,18 @@ at them before finishing.
 - `tests/unit_tests.cpp` (inside the SDK): config, settings, state JSON and
   rate-limited saving, atomic writes and corrupt files, archive checks,
   mountinfo, library sorting/listing, input mapping/repeat/triggers/stick,
-  canvas blending; and, when `.dev/sample_ebooks` has an EPUB, an
-  integration test that opens, lays out, renders and re-lays out a real book.
+  canvas blending; rendering tests on small generated books (variation
+  selectors, line art on dark pages, D26); and, when `.dev/sample_ebooks`
+  has an EPUB, integration tests that open, lay out, render and re-lay out
+  real books.
+- `tests/make-hostile-epubs.py`: writes the malformed archives and the
+  small rendering books into `.dev/test-hostile` first.
 - `tests/test_steam_shortcut.py` against a fake `HOME`.
 - Consistency checks: the version in `CMakeLists.txt` has a metainfo
   `<release>` and a `CHANGELOG.md` section; manifest patches exist.
 
-New pure logic gets unit tests.
+New pure logic gets unit tests. The unit tests' output goes to
+`.dev/unit_tests.log`; the script fails when any check fails.
 
 ## 5. Measuring
 
@@ -89,7 +103,17 @@ layout times (`-v` adds per-page render times).
    `<release>` to the metainfo and a `## x.y.z` section to `CHANGELOG.md`.
 2. `tests/run.sh`, screenshots at both sizes, `scripts/build-flatpak.sh`,
    `MODE=flatpak` headless run.
-3. Try the bundle on a Steam Deck (§7) before tagging.
+3. Refresh the README screenshots if the interface changed
+   (`tools/make-screenshots.sh`); the metainfo links them on GitHub.
+4. Try the bundle on a Steam Deck (§7) before tagging.
+
+GitHub repository settings that help people find the app (set once, by
+hand): the description "EPUB e-book reader for the Steam Deck and SteamOS
+Game Mode: controller-first, OLED themes, two-page layout, Flatpak", the
+topics `steam-deck`, `steamos`, `ebook-reader`, `epub`, `epub-reader`,
+`ebooks`, `gamepad`, `controller`, `game-mode`, `flatpak`, `linux`,
+`crengine`, `sdl3`, and a social preview image (Settings → Social
+preview; `docs/screenshots/reading.png` works).
 
 ## 7. On-device checklist (Steam Deck)
 

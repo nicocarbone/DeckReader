@@ -18,13 +18,19 @@ book=$(ls .dev/sample_ebooks/*.epub 2>/dev/null | head -1 || true)
 hostile=$root/.dev/test-hostile
 rm -rf "$hostile"
 python3 "$here/make-hostile-epubs.py" "$hostile"
+# The output goes through a file: in a pipe, the exit status would be grep's
+# and failures would pass unnoticed.
+log=$root/.dev/unit_tests.log
+status=0
 scripts/sdk-run.sh env \
     DECKREADER_TEST_HOSTILE_DIR="$hostile" \
     DECKREADER_TEST_BOOK="$book" \
     DECKREADER_TEST_BOOKS_DIR="$( [ -n "$book" ] && echo "$root/.dev/sample_ebooks" )" \
     DECKREADER_TEST_FONTS="$root/.dev/app/share/deckreader/fonts" \
     DECKREADER_TEST_ENGINE_DATA="$root/.dev/prefix/share/crengine-ng" \
-    .dev/build/unit_tests 2>&1 | grep -v -E '^[0-9/]+ [0-9:.]+ (WARN|ERROR) ' || exit 1
+    .dev/build/unit_tests > "$log" 2>&1 || status=$?
+grep -v -E '^[0-9/]+ [0-9:.]+ (WARN|ERROR) ' "$log" || true
+[ "$status" = 0 ] || { echo "unit tests FAILED (exit status $status)" >&2; exit 1; }
 
 python3 -m unittest -q "$here/test_steam_shortcut.py"
 

@@ -25,7 +25,8 @@ struct BookState {
     int page = 0;          // as last laid out (display only; layouts differ)
     int pages = 0;
     bool finished = false; // reached the last page
-    int64_t last_read = 0; // wall time, 0 = never opened
+    int64_t last_read = 0; // wall time in ms (books opened within a second keep their order); 0 = never
+    bool hidden = false;   // removed from the start screen's recent books
     std::string title, author;
     std::vector<Bookmark> bookmarks;
 };
@@ -48,7 +49,7 @@ public:
 
     BookState* find(const std::string& book);
     BookState& at(const std::string& book);
-    // Books opened before, most recent first.
+    // Books opened before, most recent first (not the hidden ones).
     std::vector<std::string> recent(size_t max) const;
 
     ReaderSettings settings;

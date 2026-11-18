@@ -39,6 +39,7 @@ tools/headless-run.sh -- "idle; shot:/tmp/lib.png; quit"   # screenshot, no disp
 W=3840 H=2160 tools/headless-run.sh -- "..."               # at TV size
 BACKEND=gamescope tools/headless-run.sh -- "..."           # headless gamescope
 scripts/build-flatpak.sh [--install]       # dist/DeckReader.flatpak
+tools/make-screenshots.sh                  # README screenshots (public-domain books)
 MODE=flatpak tools/headless-run.sh -- "..."                # test the installed Flatpak
 ```
 
@@ -72,7 +73,8 @@ look at them before finishing.
   tests: the dev and headless runs use `.dev/`; `steam_shortcut.py` is
   tested against a fake `HOME`.
 - `.dev/sample_ebooks` holds the owner's books for testing: never commit
-  them or their contents.
+  them or their contents. Published pictures come from public-domain books
+  (`tools/make-screenshots.sh`).
 
 ## Current state (2026-11-17, v0.1.0, not released)
 
@@ -89,4 +91,10 @@ look at them before finishing.
   checklist (docs/DEVELOPMENT.md §7) is still open.
 - First audit (ISSUES.md, Gemini) reviewed in D22: fixed except BUG-1 and
   BUG-2 (measured/verified not to happen) and three minor declines.
-  crengine-ng now carries three patches (`patches/`).
+  crengine-ng now carries five patches (`patches/`).
+- After test3: recently read books on the start screen (D23), optional
+  progress line (D24), margins right from the first layout (D25).
+- Release preparation: README rewritten for users and search engines,
+  with screenshots from Standard Ebooks books (`tools/make-screenshots.sh`);
+  they exposed "↩?" back-links and invisible line art on dark themes, both
+  fixed in crengine (D26).

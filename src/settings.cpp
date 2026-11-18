@@ -46,7 +46,7 @@ bool ReaderSettings::layout_differs(const ReaderSettings& o) const {
     return font != o.font || font_size != o.font_size || line_spacing != o.line_spacing ||
            para_spacing != o.para_spacing || side_margin != o.side_margin || vert_margin != o.vert_margin ||
            align != o.align || pages != o.pages || hyphenation != o.hyphenation || text_aa != o.text_aa ||
-           book_styles != o.book_styles;
+           book_styles != o.book_styles || progress_line != o.progress_line;
 }
 
 std::string line_spacing_label(int v) {

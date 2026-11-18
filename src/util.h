@@ -9,6 +9,7 @@ namespace dr {
 
 std::string trim(const std::string& s);
 std::string to_lower(std::string s);
+std::string to_upper(std::string s); // ASCII letters only
 bool starts_with(const std::string& s, const std::string& prefix);
 bool ends_with_ci(const std::string& s, const std::string& suffix);
 std::vector<std::string> split(const std::string& s, char sep);
@@ -36,6 +37,8 @@ std::string hex64(uint64_t v);
 
 // Seconds since the epoch.
 int64_t wall_time();
+// Milliseconds since the epoch.
+int64_t wall_time_ms();
 // Milliseconds from a monotonic clock.
 uint64_t mono_ms();
 

@@ -1,0 +1,68 @@
+From: DeckReader
+Subject: [PATCH] Draw transparent images over a plate on dark pages
+
+Line art in books is mostly black ink on a transparent background
+(Standard Ebooks' engravings, diagrams, ornaments). On a dark page it
+vanished: the ink is drawn black on black. When the page background is
+darker than the text, draw transparent and translucent pixels over a
+plate of the text colour, as Standard Ebooks' own CSS does for
+engravings in dark mode. Opaque images (photos, covers) are unchanged,
+and so is every light page.
+---
+diff --git a/crengine/src/lvdrawbuf/lvimagescaleddrawcallback.h b/crengine/src/lvdrawbuf/lvimagescaleddrawcallback.h
+--- a/crengine/src/lvdrawbuf/lvimagescaleddrawcallback.h
++++ b/crengine/src/lvdrawbuf/lvimagescaleddrawcallback.h
+@@ -44,6 +44,8 @@
+     bool smoothscale;
+     lUInt8* decoded;
+     bool isNinePatch;
++    bool hasPlate;
++    lUInt32 plate;
+ public:
+     static int* GenMap(int src_len, int dst_len);
+     static int* GenNinePatchMap(int src_len, int dst_len, int frame1, int frame2);
+diff --git a/crengine/src/lvdrawbuf/lvimagescaleddrawcallback.cpp b/crengine/src/lvdrawbuf/lvimagescaleddrawcallback.cpp
+--- a/crengine/src/lvdrawbuf/lvimagescaleddrawcallback.cpp
++++ b/crengine/src/lvdrawbuf/lvimagescaleddrawcallback.cpp
+@@ -136,6 +136,19 @@
+         isNinePatch = true;
+         ninePatch = np->frame;
+     }
++    // On a dark page (background darker than the text), transparent and
++    // translucent pixels are drawn over a plate of the text colour. Line
++    // art is mostly black ink on a transparent background and would vanish
++    // on a black page; opaque images (photos, covers) are unchanged. This
++    // is what Standard Ebooks' own CSS does for engravings in dark mode.
++    // LVDocView::Draw() sets both colours before drawing a page.
++    {
++        lUInt32 bg = dst->GetBackgroundColor() & 0xFFFFFF;
++        lUInt32 fg = dst->GetTextColor() & 0xFFFFFF;
++        auto luma = [](lUInt32 c) { return ((c >> 16) & 0xFF) * 299 + ((c >> 8) & 0xFF) * 587 + (c & 0xFF) * 114; };
++        hasPlate = !inv && luma(bg) < luma(fg);
++        plate = fg;
++    }
+     // If smoothscaling was requested, but no scaling was needed, disable the post-processing pass
+     if (smoothscale && src_dx == dst_dx && src_dy == dst_dy) {
+         smoothscale = false;
+@@ -243,6 +256,8 @@
+                         // (i.e., a *black* background, so it gets inverted back to white with NightMode, since white is our expected "standard" background color)
+                         // c.f., https://github.com/koreader/koreader/issues/4986
+                         row[x] = 0x00000000;
++                    } else if (hasPlate) {
++                        row[x] = plate;
+                     } else {
+                         continue;
+                     }
+@@ -250,7 +265,11 @@
+                     // Fully opaque, plot it as-is
+                     row[x] = cl ^ rgba_invert;
+                 } else {
+-                    if ((row[x] & 0xFF000000) == 0xFF000000) {
++                    if (hasPlate) {
++                        lUInt32 p = plate;
++                        ApplyAlphaRGB(p, cl, alpha);
++                        row[x] = p;
++                    } else if ((row[x] & 0xFF000000) == 0xFF000000) {
+                         // Plot it as-is if *buffer* pixel is transparent
+                         row[x] = cl ^ rgba_invert;
+                     } else {

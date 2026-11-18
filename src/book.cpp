@@ -294,17 +294,22 @@ bool Book::configure(const ReaderSettings& s, int w, int h, float unit) {
                                                       : PROP_HYPHENATION_DICT_VALUE_NONE);
     int side = static_cast<int>(std::lround(s.side_margin * unit));
     int vert = static_cast<int>(std::lround(s.vert_margin * unit));
+    // The progress line gets its own band under the text (D24).
+    int band = s.progress_line ? static_cast<int>(std::lround(PROGRESS_LINE_UNITS * unit)) : 0;
     p->setInt(PROP_PAGE_MARGIN_LEFT, side);
     p->setInt(PROP_PAGE_MARGIN_RIGHT, side);
     p->setInt(PROP_PAGE_MARGIN_TOP, vert);
-    p->setInt(PROP_PAGE_MARGIN_BOTTOM, vert);
+    p->setInt(PROP_PAGE_MARGIN_BOTTOM, vert + band);
 
     const std::string css = make_css(s);
     if (!configured_ || css != make_css(applied_))
         view_->setStyleSheet(lString8(css.c_str()));
+    // Size first: crengine caps margins at a fifth of the view's current
+    // size, and a new view is 400x200, so margins applied before the first
+    // Resize were cut to 40 px (D25).
+    view_->Resize(w, h);
     view_->propsApply(p);
     view_->setPageHeaderInfo(0);
-    view_->Resize(w, h);
     view_->checkRender();
 
     if (!pos.empty())

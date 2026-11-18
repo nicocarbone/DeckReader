@@ -36,22 +36,58 @@ void LibraryScreen::list(Location& loc) {
     case Location::Root:
         loc.entries = list_root(app_.cfg, app_.state, app_.mountinfo(), app_.paths.home);
         break;
-    case Location::Recent:
-        loc.entries = list_recent(app_.state, 200);
-        break;
     case Location::Folder:
         loc.entries = list_folder(loc.path);
         sort_entries(loc.entries, sort_, app_.meta, app_.state);
         break;
     }
-    loc.selected = 0;
+    loc.selected = -1;
     for (size_t i = 0; i < loc.entries.size(); i++)
-        if (!keep.empty() && loc.entries[i].path == keep)
+        if (!keep.empty() && loc.entries[i].path == keep && loc.entries[i].kind != LibEntry::Header)
             loc.selected = static_cast<int>(i);
+    if (loc.selected < 0) {
+        // Start screen: the cursor waits on the book read last, so A resumes
+        // it at once (D23); elsewhere on the first row.
+        loc.selected = 0;
+        if (loc.type == Location::Root)
+            for (size_t i = 0; i < loc.entries.size(); i++)
+                if (loc.entries[i].recent) {
+                    loc.selected = static_cast<int>(i);
+                    break;
+                }
+    }
+    loc.selected = selectable(loc, loc.selected, 1);
     meta_cursor_ = 0;
     meta_pending_ = true;
     fetched_any_ = false;
     app_.redraw();
+}
+
+int LibraryScreen::selectable(const Location& loc, int i, int dir) const {
+    const int n = static_cast<int>(loc.entries.size());
+    for (int d : {dir, -dir})
+        for (int j = i; j >= 0 && j < n; j += d)
+            if (loc.entries[static_cast<size_t>(j)].kind != LibEntry::Header)
+                return j;
+    return std::clamp(i, 0, std::max(0, n - 1));
+}
+
+void LibraryScreen::step(Location& loc, int dir, bool wrap) {
+    const int n = static_cast<int>(loc.entries.size());
+    int i = loc.selected;
+    for (int k = 0; k < n; k++) {
+        int j = i + dir;
+        if (j < 0 || j >= n) {
+            if (!wrap)
+                return;
+            j = (j + n) % n;
+        }
+        i = j;
+        if (loc.entries[static_cast<size_t>(i)].kind != LibEntry::Header) {
+            loc.selected = i;
+            return;
+        }
+    }
 }
 
 void LibraryScreen::refresh() {
@@ -77,14 +113,8 @@ void LibraryScreen::enter(const LibEntry& e, bool from_start) {
     case LibEntry::Book:
         app_.open_book(e.path, from_start);
         return;
-    case LibEntry::Recent: {
-        Location loc;
-        loc.type = Location::Recent;
-        loc.title = "Recent books";
-        stack_.push_back(loc);
-        list(stack_.back());
+    case LibEntry::Header:
         return;
-    }
     case LibEntry::Folder:
     case LibEntry::Source: {
         if (!is_dir(e.path)) {
@@ -108,27 +138,27 @@ void LibraryScreen::handle(const InputEvent& e) {
     const int page = std::max(1, last_rows_ - 1);
     auto sel = [&]() -> const LibEntry* { return n ? &loc.entries[static_cast<size_t>(loc.selected)] : nullptr; };
     switch (e.action) {
+    // Section headers can't be selected. A press wraps around the ends;
+    // holding stops there.
     case Action::Up:
-        if (n)
-            loc.selected = e.repeat ? std::max(0, loc.selected - 1) : (loc.selected - 1 + n) % n;
+        step(loc, -1, !e.repeat);
         break;
     case Action::Down:
-        if (n)
-            loc.selected = e.repeat ? std::min(n - 1, loc.selected + 1) : (loc.selected + 1) % n;
+        step(loc, 1, !e.repeat);
         break;
     case Action::Left:
     case Action::L1:
-        loc.selected = std::max(0, loc.selected - page);
+        loc.selected = selectable(loc, std::max(0, loc.selected - page), -1);
         break;
     case Action::Right:
     case Action::R1:
-        loc.selected = std::min(std::max(0, n - 1), loc.selected + page);
+        loc.selected = selectable(loc, std::min(std::max(0, n - 1), loc.selected + page), 1);
         break;
     case Action::L2:
-        loc.selected = 0;
+        loc.selected = selectable(loc, 0, 1);
         break;
     case Action::R2:
-        loc.selected = std::max(0, n - 1);
+        loc.selected = selectable(loc, std::max(0, n - 1), -1);
         break;
     case Action::Confirm:
         if (const LibEntry* s = sel())
@@ -171,6 +201,17 @@ void LibraryScreen::handle(const InputEvent& e) {
 void LibraryScreen::open_menu() {
     auto m = std::make_unique<Menu>();
     m->title = "DeckReader";
+    Location& loc = stack_.back();
+    if (!loc.entries.empty() && loc.entries[static_cast<size_t>(loc.selected)].recent) {
+        std::string path = loc.entries[static_cast<size_t>(loc.selected)].path;
+        m->items.push_back({"Remove from recently read", nullptr, nullptr, [this, path] {
+                                // Hidden until the book is read again.
+                                app_.state.at(path).hidden = true;
+                                app_.state.mark_dirty();
+                                app_.close_menus();
+                                refresh();
+                            }});
+    }
     m->items.push_back({"Refresh library", nullptr, nullptr, [this] {
                             app_.close_menus();
                             refresh();
@@ -272,6 +313,12 @@ bool LibraryScreen::idle_work() {
 void LibraryScreen::draw_row(Ui& ui, const LibEntry& e, float y, bool sel) {
     const UiTheme& th = ui.theme;
     float cy = y + ROW_H / 2;
+    if (e.kind == LibEntry::Header) {
+        // DeckVideoPlayer's section header: small capitals over a thin line.
+        ui.text(LEFT, y + ROW_H - 18, to_upper(e.name), 16, ui.col(th.dim), true);
+        ui.rect(LEFT, y + ROW_H - 4, ui.W() - 2 * LEFT, 1, ui.col(th.dim, 0.5f));
+        return;
+    }
     if (sel)
         ui.rect(28, y + 3, ui.W() - 56, ROW_H - 6, ui.col(th.accent), 12);
     Color fg = ui.col(th.text);
@@ -280,9 +327,7 @@ void LibraryScreen::draw_row(Ui& ui, const LibEntry& e, float y, bool sel) {
     float right = ui.W() - 48;
 
     if (e.kind != LibEntry::Book) {
-        if (e.kind == LibEntry::Recent)
-            ui.icon_recent(LEFT + 2, cy, 30, icon);
-        else if (e.kind == LibEntry::Source && e.icon == LibEntry::IconCard)
+        if (e.kind == LibEntry::Source && e.icon == LibEntry::IconCard)
             ui.icon_card(LEFT, cy, 32, icon);
         else if (e.kind == LibEntry::Source && e.icon == LibEntry::IconUsb)
             ui.icon_usb(LEFT, cy, 32, icon);
@@ -325,12 +370,18 @@ void LibraryScreen::draw_row(Ui& ui, const LibEntry& e, float y, bool sel) {
         float tw = ui.text(right - bw - 12, cy, strf("%d%%", b->percent / 100), 15, sub, false, ALIGN_RIGHT);
         text_right = right - bw - 12 - tw - 24;
     }
+    // Where a recent book is, as DeckVideoPlayer tags recently played videos.
+    if (e.recent && !e.tag.empty()) {
+        float pw = ui.text_w(e.tag, 13) + 22, ph = 26;
+        float px = text_right - pw;
+        ui.rect(px, cy - ph / 2, pw, ph, sel ? ui.col(th.text, 0.22f) : ui.col(th.panel2), ph / 2);
+        ui.text(px + pw / 2, cy, e.tag, 13, sel ? ui.col(th.text) : ui.col(th.subtext), false, ALIGN_CENTER);
+        text_right = px - 20;
+    }
 
     std::string title = display_title(e, m);
     std::string second;
-    if (e.continue_row)
-        second = "Continue reading" + std::string(m && !m->author.empty() ? " \xC2\xB7 " + m->author : "");
-    else if (m && !m->author.empty())
+    if (m && !m->author.empty())
         second = m->author;
     else if (m && m->failed)
         second = "Not a readable EPUB";
@@ -338,8 +389,7 @@ void LibraryScreen::draw_row(Ui& ui, const LibEntry& e, float y, bool sel) {
         ui.text(TEXT_X, cy, title, 21, fg, sel, ALIGN_LEFT, text_right - TEXT_X);
     } else {
         ui.text(TEXT_X, cy - 11, title, 21, fg, sel, ALIGN_LEFT, text_right - TEXT_X);
-        ui.text(TEXT_X, cy + 15, second, 15, e.continue_row && !sel ? ui.col(th.accent) : sub, false, ALIGN_LEFT,
-                text_right - TEXT_X);
+        ui.text(TEXT_X, cy + 15, second, 15, sub, false, ALIGN_LEFT, text_right - TEXT_X);
     }
 }
 
@@ -351,9 +401,15 @@ void LibraryScreen::draw(Ui& ui) {
     ui.text(40, 34, "DECK READER", 13, ui.col(th.accent), true);
     ui.text(40, 72, loc.title, 30, ui.col(th.text), true, ALIGN_LEFT, ui.W() - 360);
     ui.text(40, 102, breadcrumb(), 13, ui.col(th.subtext), false, ALIGN_LEFT, ui.W() - 360);
-    int books = 0, folders = 0;
-    for (const LibEntry& e : loc.entries)
-        (e.kind == LibEntry::Book ? books : folders)++;
+    int books = 0, folders = 0, sources = 0;
+    for (const LibEntry& e : loc.entries) {
+        if (e.kind == LibEntry::Book)
+            books++;
+        else if (e.kind == LibEntry::Folder)
+            folders++;
+        else if (e.kind == LibEntry::Source)
+            sources++;
+    }
     if (loc.type != Location::Root) {
         std::string count = books == 1 ? "1 book" : strf("%d books", books);
         if (folders)
@@ -362,16 +418,15 @@ void LibraryScreen::draw(Ui& ui) {
         if (loc.type == Location::Folder)
             ui.text(ui.W() - 40, 78, sort_label(sort_), 13, ui.col(th.dim), false, ALIGN_RIGHT);
     } else {
-        ui.text(ui.W() - 40, 50, "Steam Deck e-book reader", 16, ui.col(th.subtext), false, ALIGN_RIGHT);
+        ui.text(ui.W() - 40, 50, sources == 1 ? std::string("1 source") : strf("%d sources", sources), 16,
+                ui.col(th.subtext), false, ALIGN_RIGHT);
     }
 
     int rows = rows_visible(ui);
     last_rows_ = rows;
     keep_visible(rows);
     if (loc.entries.empty()) {
-        std::string msg = loc.type == Location::Recent ? "No books read yet."
-                                                       : "No books here. Copy .epub files into this folder, "
-                                                         "then choose Refresh in the menu.";
+        std::string msg = "No books here. Copy .epub files into this folder, then choose Refresh in the menu.";
         float y = list_top_ + 40;
         for (const std::string& line : ui.wrap(msg, 20, false, ui.W() - 160, 3)) {
             ui.text(LEFT, y, line, 20, ui.col(th.subtext));
@@ -417,7 +472,7 @@ void LibraryScreen::tap(float x, float y) {
     if (r < 0 || r >= last_rows_)
         return;
     int i = loc.scroll + r;
-    if (i >= static_cast<int>(loc.entries.size()))
+    if (i >= static_cast<int>(loc.entries.size()) || loc.entries[static_cast<size_t>(i)].kind == LibEntry::Header)
         return;
     loc.selected = i;
     app_.redraw();

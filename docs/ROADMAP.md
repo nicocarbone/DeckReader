@@ -4,7 +4,7 @@ What comes next, in order. Same guiding rules as DeckVideoPlayer: simple
 first, opt-in features show no UI until configured, nothing runs while
 idle, network work only on request.
 
-## v0.1.0: local reader (this version, not yet tried on a Deck)
+## v0.1.0: local reader (this version, tried on a Steam Deck OLED)
 
 Library (folders, microSD/USB, recent books, covers, sorting, book info),
 reader (two pages, hyphenation, four themes, three fonts, sizes and
@@ -22,9 +22,11 @@ artwork. See CHANGELOG.md.
 - Send the ZIP-hardening and external-font patches upstream (D22).
 - Measure memory on the Deck (Mesa) against the 100 MB target (D16) and
   battery drain while reading.
-- Send the soft-hyphen fix upstream to crengine-ng (D3).
-- README screenshots, made from public-domain books (the test books in
-  `.dev/sample_ebooks` are copyrighted and stay out of the repository).
+- Send the soft-hyphen fix upstream to crengine-ng (D3), and the
+  variation-selector one (D26).
+- A release workflow like DeckVideoPlayer's: CI builds the bundle and the
+  release archive, plus the complete corresponding source of the bundle
+  (GPL).
 
 ## v0.2: reading comfort
 

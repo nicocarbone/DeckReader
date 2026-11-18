@@ -66,6 +66,12 @@ Config parse_config(const std::string& text, const std::string& home) {
             ok = end && *end == '\0' && v >= 0.5 && v <= 3.0;
             if (ok)
                 cfg.ui_scale = v;
+        } else if (section == "interface" && key == "recently_read") {
+            char* end = nullptr;
+            long v = std::strtol(value.c_str(), &end, 10);
+            ok = !value.empty() && end && *end == '\0' && v >= 0 && v <= 20;
+            if (ok)
+                cfg.recently_read = static_cast<int>(v);
         } else if (section == "interface" && key == "clock") {
             std::string v = to_lower(value);
             ok = v == "24h" || v == "12h";

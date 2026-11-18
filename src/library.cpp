@@ -30,38 +30,15 @@ static std::string tilde(const std::string& path, const std::string& home) {
 std::vector<LibEntry> list_root(const Config& cfg, StateStore& state, const std::string& mountinfo_text,
                                 const std::string& home) {
     std::vector<LibEntry> out;
-    std::vector<std::string> recent = state.recent(50);
-    std::vector<std::string> existing;
-    for (const std::string& p : recent)
-        if (is_file(p))
-            existing.push_back(p);
-    for (const std::string& p : existing) {
-        const BookState* b = state.find(p);
-        if (b && !b->finished) {
-            LibEntry e;
-            e.kind = LibEntry::Book;
-            e.path = p;
-            e.name = utf8_sanitize(path_basename(p));
-            e.continue_row = true;
-            out.push_back(e);
-            break;
-        }
-    }
-    if (!existing.empty()) {
-        LibEntry e;
-        e.kind = LibEntry::Recent;
-        e.name = "Recent books";
-        e.detail = existing.size() == 1 ? "1 book" : strf("%zu books", existing.size());
-        out.push_back(e);
-    }
     for (const std::string& folder : cfg.folders) {
         LibEntry e;
         e.kind = LibEntry::Source;
         e.path = folder;
-        e.name = path_basename(folder);
+        e.name = utf8_sanitize(path_basename(folder));
         e.icon = LibEntry::IconFolder;
         e.missing = !is_dir(folder);
         e.detail = e.missing ? "Not found: " + tilde(folder, home) : tilde(folder, home);
+        e.tag = "Local";
         out.push_back(e);
     }
     if (cfg.removable_media) {
@@ -77,8 +54,47 @@ std::vector<LibEntry> list_root(const Config& cfg, StateStore& state, const std:
             e.name = count[label] > 1 ? label + " \xC2\xB7 " + utf8_sanitize(path_basename(m.mount_point)) : label;
             e.icon = label == "SD Card" ? LibEntry::IconCard : LibEntry::IconUsb;
             e.detail = m.mount_point;
+            e.tag = label == "SD Card" ? "SD Card" : "USB";
             out.push_back(e);
         }
+    }
+    const size_t sources = out.size();
+    // Where a recent book is: the source whose folder holds it (longest match).
+    auto tag_for = [&](const std::string& path) {
+        std::string tag;
+        size_t best = 0;
+        for (size_t i = 0; i < sources; i++) {
+            const std::string& root = out[i].path;
+            if (root.size() > best && starts_with(path, root + "/")) {
+                best = root.size();
+                tag = out[i].tag;
+            }
+        }
+        return tag;
+    };
+    std::vector<LibEntry> recent;
+    if (cfg.recently_read > 0) {
+        // Ask for more than shown: some may be gone or on a removed card.
+        for (const std::string& p : state.recent(static_cast<size_t>(cfg.recently_read) * 4)) {
+            if (recent.size() >= static_cast<size_t>(cfg.recently_read))
+                break;
+            if (!is_file(p))
+                continue;
+            LibEntry e;
+            e.kind = LibEntry::Book;
+            e.path = p;
+            e.name = utf8_sanitize(path_basename(p));
+            e.recent = true;
+            e.tag = tag_for(p);
+            recent.push_back(e);
+        }
+    }
+    if (!recent.empty()) {
+        LibEntry h;
+        h.kind = LibEntry::Header;
+        h.name = "Recently read";
+        out.push_back(h);
+        out.insert(out.end(), recent.begin(), recent.end());
     }
     return out;
 }
@@ -95,20 +111,6 @@ std::vector<LibEntry> list_folder(const std::string& dir) {
         e.path = path_join(dir, d.name);
         e.name = utf8_sanitize(d.name);
         e.mtime = d.mtime;
-        out.push_back(e);
-    }
-    return out;
-}
-
-std::vector<LibEntry> list_recent(StateStore& state, size_t max) {
-    std::vector<LibEntry> out;
-    for (const std::string& p : state.recent(max)) {
-        if (!is_file(p))
-            continue;
-        LibEntry e;
-        e.kind = LibEntry::Book;
-        e.path = p;
-        e.name = utf8_sanitize(path_basename(p));
         out.push_back(e);
     }
     return out;

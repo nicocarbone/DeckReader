@@ -40,6 +40,7 @@ static json settings_to_json(const ReaderSettings& s) {
         {"hyphenation", s.hyphenation},
         {"text_aa", s.text_aa},
         {"book_styles", s.book_styles},
+        {"progress_line", s.progress_line},
     };
 }
 
@@ -61,6 +62,7 @@ static ReaderSettings settings_from_json(const json& j) {
     get_to(j, "hyphenation", s.hyphenation);
     get_to(j, "text_aa", s.text_aa);
     get_to(j, "book_styles", s.book_styles);
+    get_to(j, "progress_line", s.progress_line);
     s.clamp();
     return s;
 }
@@ -75,6 +77,8 @@ std::string StateStore::to_json() const {
                   {"t", b.last_read}, {"title", b.title}, {"author", b.author}};
         if (b.finished)
             e["finished"] = true;
+        if (b.hidden)
+            e["hidden"] = true;
         if (!marks.empty())
             e["bookmarks"] = marks;
         books[path] = e;
@@ -104,6 +108,7 @@ bool StateStore::from_json(const std::string& text) {
             get_to(e, "title", b.title);
             get_to(e, "author", b.author);
             get_to(e, "finished", b.finished);
+            get_to(e, "hidden", b.hidden);
             b.percent = std::clamp(b.percent, 0, 10000);
             b.page = std::max(0, b.page);
             b.pages = std::max(0, b.pages);
@@ -182,7 +187,7 @@ BookState& StateStore::at(const std::string& book) {
 std::vector<std::string> StateStore::recent(size_t max) const {
     std::vector<std::pair<int64_t, std::string>> order;
     for (const auto& [p, b] : books_)
-        if (b.last_read > 0)
+        if (b.last_read > 0 && !b.hidden)
             order.emplace_back(b.last_read, p);
     std::sort(order.begin(), order.end(), [](const auto& a, const auto& b) {
         return a.first != b.first ? a.first > b.first : a.second < b.second;

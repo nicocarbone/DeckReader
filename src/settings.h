@@ -26,6 +26,8 @@ struct FontDef {
 extern const FontDef FONTS[4];
 constexpr int FONT_COUNT = 4;
 constexpr int TEXT_AA_COUNT = 5;
+// Height of the progress line's band below the text, in canvas units.
+constexpr int PROGRESS_LINE_UNITS = 30;
 
 struct ReaderSettings {
     int theme = 0;               // index into THEMES
@@ -40,6 +42,7 @@ struct ReaderSettings {
     bool hyphenation = true;
     int text_aa = 0;             // 0 = grayscale, 1/2 = RGB/BGR subpixels, 3/4 = vertical RGB/BGR
     bool book_styles = true;     // the book's own CSS
+    bool progress_line = false;  // percent and pages left at the bottom (D24)
 
     // Brings every field back into its valid range.
     void clamp();

@@ -16,6 +16,7 @@ struct Config {
     // [interface]
     double ui_scale = 1.0;      // 0.5 .. 3
     bool clock_24h = true;
+    int recently_read = 5;      // recent books on the start screen, 0..20 (0 = none)
     uint32_t accent = 0x10A38F; // teal: DeckReader's own (D20)
     // [reader]
     bool tap_zones = true;      // tap left/right edge to turn pages
