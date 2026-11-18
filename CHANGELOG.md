@@ -1,65 +1,66 @@
 # Changelog
 
-User-facing changes in each release.
+User-visible changes in each release. The section for a tag becomes the
+text of its GitHub release (CI extracts it, see `docs/DEVELOPMENT.md` §6),
+so write it for people installing the app, and add one for every release.
+Design details behind each change are in [docs/DECISIONS.md](docs/DECISIONS.md).
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-11-18)
 
-First version.
+The first version of DeckReader, an EPUB reader for the Steam Deck and
+SteamOS Game Mode that is used entirely with the controller. It is beta
+software: so far it has only been tried on a Steam Deck OLED.
 
-- **Library:** your book folders (`~/Books` by default), the microSD card and
-  USB drives, and your recently read books on the start screen; covers,
-  titles and authors from the books; sort by title, author or last read;
-  book info.
-- **Reading:** real book typography (hyphenation in the book's language,
-  justification), two pages side by side on the Deck's wide screen.
-- **Themes:** OLED Black, OLED Dark, Sepia (warm paper) and Day, switched instantly with Y.
-- **Text:** Literata, Inter, Atkinson Hyperlegible or the book's own fonts;
-  size, line and paragraph spacing, margins, alignment.
-- **Navigation:** pages with the D-pad, L1/R1 or touch; chapters with
-  L2/R2 or D-pad up/down; hold the left stick to scrub through the book;
-  Contents (View) and bookmarks (X).
-- **Status overlay (A):** chapter, pages, progress, pages left in the
-  chapter, battery and clock.
-- Your place is saved on every page turn, safely against sleep and power
-  loss.
-- Same controls and look as Deck Video Player, in teal; installer adds it to
-  Steam with artwork.
-- Text rendering: grayscale (default), RGB/BGR subpixels for external
-  monitors, and vertical RGB/BGR to try on the Deck's screen.
+**Install:** in Desktop Mode, download `DeckReader-v0.1.0.tar.gz` below,
+extract it and run `./scripts/install-steamos.sh` in Konsole. Then copy
+your `.epub` files into `~/Books` (or onto the microSD card) and start
+DeckReader from the Steam library in Game Mode. Full steps are in the
+[README](https://github.com/nicocarbone/DeckReader#install-on-steam-deck-and-steamos).
 
-Fixed after the first test on a Steam Deck OLED:
+### Library
 
-- Changing the font, size or spacing no longer moves your place in the book
-  (several changes in a row used to drift back a few pages).
-- The font menu now changes the font in books whose styles name a font of
-  their own.
-- "Updating pages…" shows while a new layout is prepared.
-- Sepia is warmer; the accent colour is teal, so DeckReader and Deck Video
-  Player are easy to tell apart.
+- Your book folders (`~/Books` by default), the microSD card and USB
+  drives, with covers, titles, authors and reading progress.
+- Your recently read books on the start screen, below the folders, so A
+  resumes the last one. `recently_read` in `config.ini` sets how many.
+- Sort by title, author or last read (Y); book info (View).
 
-From the first code audit:
+### Reading
 
-- Safer handling of malformed or hostile EPUB files.
-- Swipe left or right on the touchscreen to turn pages; dragging no longer
-  counts as a tap.
-- Pressing X on a page with two bookmarks removes both; the bookmark icon
-  has its notch back.
-- Chapter skipping works in books whose contents list is out of order.
-- Messages no longer cover the status overlay's title; a second controller
-  no longer interferes with the first.
-- Folders sort by the books' titles as soon as they are read.
-- Recently read books on the start screen, below the folders, as in Deck
-  Video Player (`recently_read` in config.ini sets how many).
-- Optional progress line while reading (Settings → Progress line):
-  percentage read, pages left in the chapter and in the book.
-- Page margins are now right from the first page (they were smaller than
-  set until the first settings change, most visibly on a 4K screen).
+- EPUB 2 and EPUB 3 books without DRM, set like a printed book:
+  hyphenation in the book's language, justified text, illustrations.
+- Two pages side by side on the Deck's wide screen, or one page.
+- Four themes, switched instantly with Y: OLED Black, OLED Dark, Sepia and
+  Day. Black line art stays visible on the dark themes.
+- Literata, Inter and Atkinson Hyperlegible, or the book's own fonts. Text
+  size, line and paragraph spacing, margins, alignment, hyphenation and the
+  book's own styles are in the reading settings (Menu).
 
-Found while making the README screenshots with Standard Ebooks books:
+### Getting around
 
-- Illustrations drawn in black ink on a transparent background (engravings,
-  diagrams) were invisible on the OLED themes; they now sit on a light plate
-  in the text colour.
-- Note back-links ("↩") no longer show a stray "?" after them.
-- The left-stick scrub shows the same pages and percentage as the status
-  overlay.
+- Turn pages with the D-pad, L1/R1, or a tap or swipe on the touchscreen;
+  skip chapters with D-pad up/down or L2/R2.
+- Hold the left stick to scrub through the whole book, with the page and
+  chapter shown as you go.
+- Contents (View) and bookmarks (X, and in the reading settings).
+- The status overlay (A) shows the book, chapter, pages, percentage, pages
+  left in the chapter, battery and clock. An optional progress line under
+  the text shows the pages left in the chapter and in the book.
+
+### Also
+
+- Your place is saved on every page turn, safe against sleep and a dead
+  battery.
+- The same buttons and look as Deck Video Player. The installer adds
+  DeckReader to Steam with its library artwork.
+- No network access and no account. Nothing runs while you read.
+
+### Known limitations
+
+- EPUB only, and only without DRM.
+- Links and footnotes can't be followed yet.
+- Chinese, Japanese, Korean, Arabic and Hebrew text needs fonts that are
+  not bundled yet.
+- Only tried on a Steam Deck OLED. Reports from the Steam Deck LCD and other
+  devices are welcome in the
+  [issues](https://github.com/nicocarbone/DeckReader/issues).

@@ -77,7 +77,7 @@ look at them before finishing.
   them or their contents. Published pictures come from public-domain books
   (`tools/make-screenshots.sh`).
 
-## Current state (2026-11-17, v0.1.0, not released)
+## Current state (2026-11-18, v0.1.0 released)
 
 - First version written and tested headless (offscreen and gamescope, at
   1280×800 and 4K) with nine real EPUBs (Spanish and English): all open
@@ -100,4 +100,5 @@ look at them before finishing.
   they exposed "↩?" back-links and invisible line art on dark themes, both
   fixed in crengine (D26).
 - Public on GitHub (github.com/nicocarbone/DeckReader); CI and the release
-  workflow (D27) are in place; v0.1.0 not tagged yet.
+  workflow (D27) are in place; v0.1.0 released on 2026-11-18 (GitHub
+  release made by CI from the tag).

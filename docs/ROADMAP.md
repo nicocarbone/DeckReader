@@ -4,7 +4,7 @@ What comes next, in order. Same guiding rules as DeckVideoPlayer: simple
 first, opt-in features show no UI until configured, nothing runs while
 idle, network work only on request.
 
-## v0.1.0: local reader (this version, tried on a Steam Deck OLED)
+## v0.1.0: local reader (released 2026-11-18, tried on a Steam Deck OLED)
 
 Library (folders, microSD/USB, recent books, covers, sorting, book info),
 reader (two pages, hyphenation, four themes, three fonts, sizes and
