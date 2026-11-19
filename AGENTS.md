@@ -16,10 +16,12 @@ non-trivial.
 | Reader: navigation, HUD, scrub, bookmarks, drawers | `src/reader_screen.cpp` |
 | How settings reach the book (props, CSS overrides) | `src/book.cpp` (`Book::configure`, `make_css`) |
 | Reading settings, themes, fonts, labels | `src/settings.cpp` |
-| Menus/drawers component | `src/menu.cpp` |
+| Menus/drawers component (rows, section headers) | `src/menu.cpp` |
 | Drawing primitives, glyphs, icons, interface colours (teal accent, D20) | `src/ui.h` (`UiTheme`), `src/ui.cpp`, `src/canvas.cpp`, `src/text.cpp` |
 | Button → action mapping | `src/input.cpp` |
-| Main loop, routing, toasts, timers, About | `src/app.cpp` |
+| Main loop, routing, toasts, timers | `src/app.cpp` |
+| About screen | `src/about.cpp` |
+| Keeping the screen awake while reading | `src/keepawake.cpp` (app side), `helper/deckreader-keep-awake.c` (D-Bus) |
 | Saving (state.json), atomic writes | `src/state.cpp`, `src/fsutil.cpp` |
 | EPUB archive checks | `src/epubguard.cpp` |
 | config.ini | `src/config.cpp`, `data/config.ini`, `docs/CONFIGURATION.md` |
@@ -77,7 +79,7 @@ look at them before finishing.
   them or their contents. Published pictures come from public-domain books
   (`tools/make-screenshots.sh`).
 
-## Current state (2026-11-18, v0.1.0 released)
+## Current state (2026-11-18, v0.2.0 released)
 
 - First version written and tested headless (offscreen and gamescope, at
   1280×800 and 4K) with nine real EPUBs (Spanish and English): all open
@@ -102,3 +104,7 @@ look at them before finishing.
 - Public on GitHub (github.com/nicocarbone/DeckReader); CI and the release
   workflow (D27) are in place; v0.1.0 released on 2026-11-18 (GitHub
   release made by CI from the tag).
+- v0.2.0 released on 2026-11-18: the screen stays awake while reading
+  (D28; confirmed on the owner's Steam Deck with test bundle
+  v0.2.0-test1), and a complete About screen, also in the reading menu
+  (D29).

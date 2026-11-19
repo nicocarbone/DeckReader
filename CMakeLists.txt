@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(deckreader VERSION 0.1.0 LANGUAGES CXX)
+project(deckreader VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -14,6 +14,8 @@ pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
 pkg_check_modules(FREETYPE REQUIRED IMPORTED_TARGET freetype2)
 pkg_check_modules(HARFBUZZ REQUIRED IMPORTED_TARGET harfbuzz)
 pkg_check_modules(PNG REQUIRED IMPORTED_TARGET libpng)
+# sd-bus, for the keep-awake helper only (in the Freedesktop runtime).
+pkg_check_modules(SYSTEMD REQUIRED IMPORTED_TARGET libsystemd)
 # crengine-ng is built as a static library; its CMake package brings its
 # own dependencies (FreeType, HarfBuzz, FriBiDi, libunibreak, zstd...).
 find_package(crengine-ng REQUIRED CONFIG)
@@ -29,6 +31,7 @@ configure_file(src/version.h.in ${CMAKE_CURRENT_BINARY_DIR}/version.h @ONLY)
 
 # Everything except main.cpp, so the unit tests link the same code.
 add_library(deckreader_core STATIC
+    src/about.cpp
     src/app.cpp
     src/book.cpp
     src/canvas.cpp
@@ -38,6 +41,7 @@ add_library(deckreader_core STATIC
     src/fsutil.cpp
     src/image_io.cpp
     src/input.cpp
+    src/keepawake.cpp
     src/library.cpp
     src/library_screen.cpp
     src/log.cpp
@@ -63,7 +67,13 @@ add_executable(deckreader src/main.cpp)
 target_link_libraries(deckreader PRIVATE deckreader_core)
 target_compile_options(deckreader PRIVATE -Wall -Wextra)
 
-install(TARGETS deckreader RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+# Holds the screensaver inhibition while a book is read (D28); the app
+# finds it next to its own executable.
+add_executable(deckreader-keep-awake helper/deckreader-keep-awake.c)
+target_link_libraries(deckreader-keep-awake PRIVATE PkgConfig::SYSTEMD)
+target_compile_options(deckreader-keep-awake PRIVATE -Wall -Wextra)
+
+install(TARGETS deckreader deckreader-keep-awake RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES data/config.ini DESTINATION ${CMAKE_INSTALL_DATADIR}/deckreader)
 
 # Unit tests: pure logic (config, state, archive checks, sorting, input map).

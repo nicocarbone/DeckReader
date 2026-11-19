@@ -450,6 +450,7 @@ void ReaderScreen::open_settings() {
         s->text_aa = (s->text_aa + d + TEXT_AA_COUNT) % TEXT_AA_COUNT;
         settings_changed(true);
     });
+    m->items.push_back({"About DeckReader", nullptr, nullptr, [this] { app_.open_about(); }});
     m->items.push_back({"Close book", nullptr, nullptr, [this] {
                             app_.close_menus();
                             app_.show_library();

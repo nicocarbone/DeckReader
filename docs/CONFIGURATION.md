@@ -32,6 +32,8 @@ flatpak override --user --filesystem=/path/to/books:ro io.github.nicocarbone.Dec
 | Key | Default | Meaning |
 |---|---|---|
 | `tap_zones` | `yes` | Tapping the left or right 30% of the touchscreen turns pages; the middle shows the status overlay. With `no`, every tap shows the overlay. |
+| `keep_awake` | `yes` | Keeps the screen from dimming and the Deck from sleeping while a book is open (D28). In the library, and with `no`, SteamOS's own timers apply. About → *Keep awake* shows whether the system accepted. |
+| `keep_awake_minutes` | `10` | After this many minutes without a button press or tap while reading (1–240), the screen is allowed to dim and sleep again, so a Deck left on the table doesn't stay on. The next press keeps it awake again. |
 
 ## [interface]
 

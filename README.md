@@ -48,10 +48,13 @@ look, same buttons, same installer.
   line** under the text: pages left in the chapter and in the book.
 - **Your place is saved on every page turn**, safe against sleep, a dead
   battery or closing the app from Steam.
+- **The screen stays on while you read**: no dimming or sleep in the
+  middle of a page. After 10 minutes without a button press, SteamOS's
+  own dim and sleep timers apply again.
 - **Touchscreen**: tap the edges or swipe to turn pages, tap the middle
   for the overlay.
-- **Easy on the battery**: one process, nothing runs while you read, and
-  the next pages are ready before you turn.
+- **Easy on the battery**: nothing runs while you read, and the next
+  pages are ready before you turn.
 - **Scales to 4K TVs** for a docked Deck or a Steam Machine.
 - **Private**: no network access at all, no account, no tracking.
 
@@ -149,7 +152,7 @@ and reading positions are kept).
 | **D-pad ↑ ↓** | Move | Previous / next chapter |
 | **L2 / R2** | First / last item | Previous / next chapter |
 | **View** | Book info | Contents |
-| **Menu** | Library menu (refresh, remove from recently read, about, quit) | Reading settings, bookmarks |
+| **Menu** | Library menu (refresh, remove from recently read, about, quit) | Reading settings, bookmarks, about |
 | **Left stick** | Move | Hold left or right to scrub through the book |
 | **Touchscreen** | Tap a row | Tap the edges or swipe: page; tap the middle: overlay |
 
@@ -164,8 +167,9 @@ font size, line and paragraph spacing, side and top/bottom margins,
 alignment, one or two pages, hyphenation, the book's own styles and text
 rendering. They apply to every book and are kept between sessions.
 
-Book folders and a few interface options (the recently read list, the
-clock format, interface size, accent colour, tap zones) are in
+Book folders and a few other options (the recently read list, the clock
+format, interface size, accent colour, tap zones, keeping the screen
+awake) are in
 `~/.config/deckreader/config.ini`, created on the first start; see
 [docs/CONFIGURATION.md](docs/CONFIGURATION.md). The Flatpak can read
 `~/Books`, Documents, Downloads, `/mnt` and removable drives; for another
@@ -182,7 +186,9 @@ Steam (Game Mode) ─ launches ─▶ flatpak run io.github.nicocarbone.DeckRead
                                    │  one process, one thread, sleeps until input
                                    ├─ crengine-ng: EPUB → pages (hyphenation, CSS, fonts)
                                    ├─ SDL3: window, GPU textures, gamepad, touch
-                                   └─ FreeType + HarfBuzz: the interface's text
+                                   ├─ FreeType + HarfBuzz: the interface's text
+                                   └─ while reading: a small helper asks Steam
+                                      not to dim the screen (D-Bus)
                                    ▼
                               gamescope ─▶ Steam Deck screen / TV
 ```
@@ -257,6 +263,11 @@ to download books from your own server. See
   position is saved on every page turn (at most every two seconds while
   you flip through pages), when the Steam overlay opens and when the app
   closes.
+- **Does the screen dim while I read?** No. While a book is open,
+  DeckReader asks SteamOS not to dim the screen or sleep, until 10 minutes
+  pass without a button press (`keep_awake_minutes` in `config.ini`). In
+  the library, SteamOS's own settings apply. *About* (in the Menu) shows
+  whether SteamOS accepted.
 - **Does it work on the Steam Deck LCD, other handhelds or desktop
   Linux?** Not tested yet. The LCD model has the same resolution and
   should work; anything running SteamOS's Game Mode (gamescope) may work.

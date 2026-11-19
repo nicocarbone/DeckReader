@@ -20,6 +20,8 @@ struct Config {
     uint32_t accent = 0x10A38F; // teal: DeckReader's own (D20)
     // [reader]
     bool tap_zones = true;      // tap left/right edge to turn pages
+    bool keep_awake = true;     // no dimming or sleep while reading (D28)
+    int keep_awake_minutes = 10; // ...until this long without input, 1..240
 
     // Problems found while reading the file (unknown keys, bad values).
     std::vector<std::string> warnings;

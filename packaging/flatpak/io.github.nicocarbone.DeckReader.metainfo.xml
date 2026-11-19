@@ -74,6 +74,9 @@
   <url type="donation">https://ko-fi.com/nicocarbone</url>
   <releases>
     <!-- Set the date when tagging the release (docs/DEVELOPMENT.md §6). -->
+    <release version="0.2.0" date="2026-11-18">
+      <description><p>The screen stays awake while a book is being read (until 10 minutes without input), and a complete About screen, also in the reading menu.</p></description>
+    </release>
     <release version="0.1.0" date="2026-11-18">
       <description><p>First version: local library with recently read books, reader, themes, contents, bookmarks and an optional progress line.</p></description>
     </release>

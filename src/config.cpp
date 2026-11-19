@@ -88,6 +88,14 @@ Config parse_config(const std::string& text, const std::string& home) {
                 cfg.accent = static_cast<uint32_t>(std::strtoul(v.c_str(), nullptr, 16));
         } else if (section == "reader" && key == "tap_zones") {
             ok = parse_bool(value, &cfg.tap_zones);
+        } else if (section == "reader" && key == "keep_awake") {
+            ok = parse_bool(value, &cfg.keep_awake);
+        } else if (section == "reader" && key == "keep_awake_minutes") {
+            char* end = nullptr;
+            long v = std::strtol(value.c_str(), &end, 10);
+            ok = !value.empty() && end && *end == '\0' && v >= 1 && v <= 240;
+            if (ok)
+                cfg.keep_awake_minutes = static_cast<int>(v);
         } else {
             cfg.warnings.push_back(strf("line %d: unknown setting [%s] %s", lineno, section.c_str(), key.c_str()));
             continue;

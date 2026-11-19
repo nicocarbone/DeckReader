@@ -119,8 +119,9 @@ To release:
 
 1. Bump `project(... VERSION x.y.z)` in `CMakeLists.txt`; write the
    `## x.y.z (date)` section of `CHANGELOG.md` for users (new, changed,
-   fixed: it becomes the release text) and a `<release>` with the same date
-   in the metainfo. Update `docs/ROADMAP.md` and the "Current state" of
+   fixed: it becomes the release text; between releases it is collected
+   under `## x.y.z (unreleased)`) and a `<release>` with the same date in
+   the metainfo. Update `docs/ROADMAP.md` and the "Current state" of
    `AGENTS.md`.
 2. `tests/run.sh` (fails while the changelog section or the metainfo
    entry is missing), screenshots at both sizes, `scripts/build-flatpak.sh`,
@@ -142,7 +143,8 @@ preview; `docs/screenshots/reading.png` works).
 
 ## 7. On-device checklist (Steam Deck)
 
-Not yet done for any version.
+Item 11 was confirmed by the owner for 0.2.0 (2026-11-18); the rest is
+not yet done as a whole.
 
 1. `scripts/install-steamos.sh` in Desktop Mode adds "DeckReader" to Steam
    with artwork; it starts in Game Mode, fullscreen, no cursor.
@@ -162,6 +164,11 @@ Not yet done for any version.
    close; keep Grayscale unless one vertical mode is clearly sharper (D21).
 10. Change font, size and spacing several times in the middle of a book: the
     same words stay on screen.
+11. Keep awake (D28): set Steam's "Dim screen after" to its shortest. With a
+    book open and no input, the screen doesn't dim. Menu → About → *Keep
+    awake* says "screensaver accepted". With `keep_awake_minutes = 1` in
+    `config.ini`, the screen dims about a minute after the last press. In
+    the library it dims as usual.
 
 ## 8. Gotchas
 

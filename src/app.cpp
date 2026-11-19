@@ -1,5 +1,6 @@
 #include "app.h"
 
+#include "about.h"
 #include "book.h"
 #include "fsutil.h"
 #include "log.h"
@@ -34,7 +35,8 @@ Paths Paths::detect() {
     p.cache_dir = env_or("DECKREADER_CACHE_DIR", path_join(env_or("XDG_CACHE_HOME", path_join(p.home, ".cache")), "deckreader"));
     char exe[PATH_MAX] = {0};
     ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
-    std::string prefix = n > 0 ? path_dirname(path_dirname(std::string(exe, static_cast<size_t>(n)))) : "/app";
+    p.bin_dir = n > 0 ? path_dirname(std::string(exe, static_cast<size_t>(n))) : "/app/bin";
+    std::string prefix = path_dirname(p.bin_dir);
     p.app_data = env_or("DECKREADER_APPDIR", path_join(prefix, "share/deckreader"));
     std::string engine = DECKREADER_CRENGINE_DATA;
     if (!is_dir(engine))
@@ -106,6 +108,7 @@ void App::open_book(const std::string& path, bool from_start) {
 }
 
 void App::show_library() {
+    keep_awake.release();
     if (reader_)
         reader_->close();
     state.save();
@@ -115,32 +118,7 @@ void App::show_library() {
 }
 
 void App::open_about() {
-    auto m = std::make_unique<Menu>();
-    m->title = "About DeckReader";
-    m->width = 620;
-    auto row = [&](const std::string& label, const std::string& value) {
-        m->items.push_back({label, [value] { return value; }});
-    };
-    // build-info: "date=2026-11-17" and "commit=1a2b3c4" lines (Flatpak builds).
-    std::string info, date, commit;
-    read_file(path_join(paths.app_data, "build-info"), info, 4096);
-    for (const std::string& line : split(info, '\n')) {
-        if (starts_with(line, "date="))
-            date = trim(line.substr(5));
-        else if (starts_with(line, "commit="))
-            commit = trim(line.substr(7));
-    }
-    row("Version", DECKREADER_VERSION);
-    if (!date.empty())
-        row("Build", commit.empty() ? date : date + " \xC2\xB7 " + commit);
-    row("Status", "Beta, provided without warranty");
-    row("Licence", "GPL-2.0-or-later");
-    row("Book engine", "crengine-ng");
-    row("Fonts", "Literata, Inter, Atkinson Hyperlegible");
-    row("Settings file", paths.config_dir + "/config.ini");
-    row("Reading data", paths.data_dir);
-    row("Companion app", "DeckVideoPlayer");
-    push_menu(std::move(m));
+    push_menu(make_about_menu(*this));
 }
 
 // --- input -------------------------------------------------------------------------
@@ -155,6 +133,7 @@ void App::dispatch(const InputEvent& e) {
     }
     if (pending_.active)
         return; // a book is opening
+    reading_activity();
     // B dismisses what is on screen first (DeckVideoPlayer D63).
     if (e.action == Action::Back && !toast_.empty() && menus_.empty() && !e.repeat) {
         toast_.clear();
@@ -173,9 +152,15 @@ void App::dispatch(const InputEvent& e) {
         library_->handle(e);
 }
 
+void App::reading_activity() {
+    if (screen_ == Screen::Reader && reader_ && reader_->is_open())
+        keep_awake.activity(now_);
+}
+
 void App::tap(float x_px, float y_px) {
     if (pending_.active)
         return;
+    reading_activity();
     float scale = display.height() / Ui::BASE_HEIGHT * static_cast<float>(cfg.ui_scale);
     float ux = x_px / scale, uy = y_px / scale, uw = display.width() / scale;
     if (Menu* m = top_menu()) {
@@ -243,8 +228,10 @@ void App::handle_event(const SDL_Event& e) {
             if (std::fabs(dx) <= slop && std::fabs(dy) <= slop)
                 tap(x, y);
             else if (screen_ == Screen::Reader && menus_.empty() && !pending_.active &&
-                     std::fabs(dx) > display.width() * 0.08f && std::fabs(dx) > 2 * std::fabs(dy))
+                     std::fabs(dx) > display.width() * 0.08f && std::fabs(dx) > 2 * std::fabs(dy)) {
+                reading_activity();
                 reader_->swipe(dx < 0 ? 1 : -1); // swipe left: next page
+            }
             // other drags do nothing
         }
         return;
@@ -269,6 +256,7 @@ void App::tick() {
         dispatch(a);
     if (screen_ == Screen::Reader)
         reader_->tick(now_);
+    keep_awake.tick(now_);
     if (!toast_.empty() && now_ >= toast_until_) {
         toast_.clear();
         redraw();
@@ -298,6 +286,7 @@ int64_t App::next_timeout() {
     if (cursor_hide_at_)
         consider(cursor_hide_at_ > now_ ? static_cast<int64_t>(cursor_hide_at_ - now_) : 0);
     consider(state.save_due_in(now_));
+    consider(keep_awake.next_due(now_)); // one wake-up, minutes away
     if (script_ && !script_->done())
         consider(script_->ready_at > now_ ? static_cast<int64_t>(std::min<uint64_t>(script_->ready_at - now_, 50)) : 0);
     return best;
@@ -481,6 +470,7 @@ void App::loop() {
             close_menus();
             if (reader_->open(p.path, p.from_start, &error)) {
                 screen_ = Screen::Reader;
+                reading_activity();
             } else {
                 toast(error.empty() ? "The book could not be opened." : error);
                 library_->refresh();
@@ -518,6 +508,11 @@ int App::run(const AppOptions& opt) {
     for (const std::string& w : cfg.warnings)
         LOG_W("config.ini: %s", w.c_str());
     theme.accent = cfg.accent;
+    // The helper's status file goes where only this user can read it.
+    std::string runtime = env_or("XDG_RUNTIME_DIR", paths.cache_dir);
+    keep_awake.setup(path_join(paths.bin_dir, "deckreader-keep-awake"),
+                     path_join(runtime, strf("deckreader-keep-awake-%d.status", static_cast<int>(getpid()))),
+                     cfg.keep_awake ? cfg.keep_awake_minutes : 0);
 
     state = StateStore(path_join(paths.data_dir, "state.json"));
     state.load();

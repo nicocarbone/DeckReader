@@ -22,7 +22,8 @@ DeckReader's own source (`scripts/make-source-archive.py`, D27).
 
 From the Freedesktop runtime (not bundled): SDL3 (zlib), FreeType
 (FTL/GPLv2, used under GPLv2), HarfBuzz (MIT), FriBiDi (LGPL-2.1+), libpng,
-libjpeg-turbo, libwebp, zstd, zlib, fontconfig.
+libjpeg-turbo, libwebp, zstd, zlib, fontconfig, and libsystemd's sd-bus
+(LGPL-2.1-or-later), used by the keep-awake helper.
 
 Steam, Steam Deck and SteamOS are trademarks of Valve Corporation. This
 project is not affiliated with or endorsed by Valve. The Steam artwork in

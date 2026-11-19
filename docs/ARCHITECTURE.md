@@ -16,15 +16,20 @@ must do.
 │        ├─ SDL3: window (X11 under gamescope), OpenGL renderer,     │
 │        │        gamepad (Steam Input's virtual pad), touch         │
 │        ├─ crengine-ng: EPUB → DOM → CSS → pages → pixels           │
-│        └─ FreeType + HarfBuzz: interface text                      │
+│        ├─ FreeType + HarfBuzz: interface text                      │
+│        └─ while reading: deckreader-keep-awake ── D-Bus ──▶        │
+│             org.freedesktop.ScreenSaver (Steam), Inhibit portal    │
 │                                                                    │
 │   page texture (opaque) + overlay texture (premultiplied alpha)    │
 │        └─ gamescope ── panel / TV                                   │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-One process, one thread, no helper processes or daemons. The process
-sleeps until input or a pending timer (D1).
+One process, one thread, no daemons. The process sleeps until input or a
+pending timer (D1). While a book is being read, a small helper process
+holds the screensaver inhibition that keeps the screen awake (D28); it
+sleeps too, and is stopped in the library and after
+`keep_awake_minutes` without input.
 
 ## 2. Modules (`src/`)
 
@@ -38,7 +43,9 @@ sleeps until input or a pending timer (D1).
 | `reader_screen.*` | Reading: page textures and pre-rendering, navigation, HUD, scrub, bookmarks, Contents/Bookmarks/Settings drawers |
 | `book.*` | crengine-ng wrapper: engine init, archive check, metadata, layout settings → crengine props and CSS, render a screen, positions, TOC |
 | `epubguard.*` | ZIP directory checks (D5) |
-| `menu.*` | Right-side drawer menus (rows, ◀ ▶ values, scroll, taps) |
+| `menu.*` | Right-side drawer menus (rows, ◀ ▶ values, section headers, scroll, taps) |
+| `about.*` | The About screen: version, build, links, system details for bug reports, credits (D29) |
+| `keepawake.*` | Starts and stops the keep-awake helper while reading (D28) |
 | `ui.*` | DeckVideoPlayer's look on the 800-unit canvas: text, shapes, button glyphs, icons, hint bar |
 | `canvas.*` | CPU drawing: anti-aliased rounded rects, circles, polygons, glyph masks, images |
 | `text.*` | Interface text: HarfBuzz shaping, FreeType glyphs, ellipsis, wrap |
@@ -52,6 +59,10 @@ sleeps until input or a pending timer (D1).
 | `image_io.*` | PNG read/write (covers, screenshots) |
 | `testscript.*` | Scripted input for headless tests (D17) |
 | `util.*`, `log.*` | Strings, paths, natural sort, logging |
+
+`helper/deckreader-keep-awake.c` is a separate C program (sd-bus): it asks
+for the screensaver inhibition, holds it while it runs and withdraws it
+when stopped (D28).
 
 ## 3. Runtime model
 
@@ -75,7 +86,8 @@ sleeps until input or a pending timer (D1).
 
 1. Compute the timeout: 0 if a frame is due or background work is pending;
    otherwise the nearest of: held-button repeat, reader timers (re-layout,
-   HUD clock, scrub), toast expiry, cursor hide, debounced save, script.
+   HUD clock, scrub), toast expiry, cursor hide, debounced save, the
+   keep-awake release (minutes away, D28), script.
    −1 (wait forever) when nothing is pending.
 2. Wait for an event; handle it and every queued one.
 3. Run one test-script command, then timers (`tick`).

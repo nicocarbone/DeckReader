@@ -5,6 +5,36 @@ text of its GitHub release (CI extracts it, see `docs/DEVELOPMENT.md` §6),
 so write it for people installing the app, and add one for every release.
 Design details behind each change are in [docs/DECISIONS.md](docs/DECISIONS.md).
 
+## 0.2.0 (2026-11-18)
+
+The screen no longer dims while you read, and a complete About screen is
+now also in the reading menu.
+
+**Install or update:** in Desktop Mode, download `DeckReader-v0.2.0.tar.gz`
+below, extract it and run `./scripts/install-steamos.sh` in Konsole.
+Updating keeps your settings, reading positions and bookmarks. Full steps
+are in the
+[README](https://github.com/nicocarbone/DeckReader#install-on-steam-deck-and-steamos).
+
+### Reading
+
+- **The screen stays on while you read.** SteamOS no longer dims the
+  screen or puts the Deck to sleep in the middle of a page. After 10
+  minutes without a button press or tap, SteamOS's own dim and sleep
+  timers apply again, so a Deck left on the table still turns off; in the
+  library they always apply. To change this, add `keep_awake = no` or
+  `keep_awake_minutes = 30` (1 to 240) under `[reader]` in
+  `~/.config/deckreader/config.ini`.
+
+### Also
+
+- A complete **About** screen, now also in the reading menu: version and
+  build, source code, licence, how to support the project, credits, and
+  the details a bug report needs (versions, device, screen, whether
+  SteamOS accepted the keep-awake request, folders and files).
+- Menus have section headers, and long values such as folder paths use
+  the free room in the row before they are cut.
+
 ## 0.1.0 (2026-11-18)
 
 The first version of DeckReader, an EPUB reader for the Steam Deck and

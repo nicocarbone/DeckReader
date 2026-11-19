@@ -9,7 +9,8 @@ cited as "DeckVideoPlayer Dn".
 
 The main loop sleeps in `SDL_WaitEventTimeout` with a timeout only when a
 timer is really pending (a held button's repeat, a toast, the HUD clock,
-a debounced save, a re-layout, the left-stick scrub). Nothing renders while
+a debounced save, a re-layout, the left-stick scrub, the keep-awake
+release of D28). Nothing renders while
 a page is just being read: measured 1 CPU tick (10 ms) in 5 s with a page
 on screen. A frame is the page texture (opaque) plus, only when something
 is shown on top, the interface overlay (premultiplied alpha). Requirements
@@ -396,3 +397,90 @@ publishes its source.
 The third-party actions are pinned to the same commits as
 DeckVideoPlayer's; GitHub warns that they target Node.js 20 (run on 24),
 to be updated in both projects together.
+
+## D28. Keep the screen awake while reading, as DeckVideoPlayer
+
+- **Problem:** in game mode the screen dims and the Deck sleeps on
+  Steam's own idle timer, which only counts input Steam sees. Reading a
+  page without touching anything is exactly that. SDL's own screensaver
+  handling doesn't reach Steam: in a Flatpak it uses the Inhibit portal,
+  which game mode doesn't offer (DeckVideoPlayer D43).
+- **Mechanism:** DeckVideoPlayer's, verified there on a Steam Deck: an
+  `org.freedesktop.ScreenSaver.Inhibit` request, which Steam honours (no
+  dimming, no sleep), plus the Inhibit portal for desktop sessions. An
+  inhibition lasts as long as the D-Bus connection that made it, so a
+  small C helper, `deckreader-keep-awake` (`helper/`, sd-bus from the
+  runtime's libsystemd), holds it while it runs. Flatpak permission:
+  `--talk-name=org.freedesktop.ScreenSaver`. The helper writes the outcome
+  to a status file in `XDG_RUNTIME_DIR`; the About screen shows it
+  (*Keep awake*), so a failure is visible.
+- **Policy (different from a video player):** a reader is used in short
+  bursts, and a Deck left on the table must still dim and sleep. The
+  helper runs while a book is open and is stopped after
+  `keep_awake_minutes` (default 10) without input, in the library, and on
+  quit; the next button press or tap while reading starts it again.
+  `[reader] keep_awake = no` turns it off. The release is one wake-up of
+  the main loop, minutes away (D1). Monotonic time doesn't advance during
+  sleep, so after a resume the countdown continues where it was.
+- **Changes from dvp-keep-awake:**
+  - On SIGTERM it calls `UnInhibit` with its cookie before disconnecting,
+    so the release doesn't depend on Steam noticing the disconnection.
+  - It never wakes up while holding the inhibition (D1; it runs for whole
+    reading sessions, a video player's helper only during playback).
+    SIGTERM and SIGINT are blocked and read from a signalfd, polled with
+    the bus. dvp-keep-awake wakes every second to catch a signal that
+    lands just before its wait. Measured: 0 context switches in 3 s while
+    holding.
+  - Its parent dying (PR_SET_PDEATHSIG) also ends it with `UnInhibit`.
+
+  Tested against a stand-in `org.freedesktop.ScreenSaver` on a private
+  bus: Inhibit, UnInhibit on stop and on the parent's SIGKILL, nothing
+  held afterwards. Confirmed on the owner's Steam Deck (test bundle
+  v0.2.0-test1, 2026-11-18): no dimming while reading, About shows
+  "screensaver accepted", the screen dims after `keep_awake_minutes`
+  without input and in the library as usual.
+- **App side:** `KeepAwake` (`src/keepawake.*`) starts the helper with
+  `posix_spawn`, stops it with SIGTERM without waiting, and reaps stopped
+  helpers later (WNOHANG), so the interface never waits for D-Bus. A
+  helper that exits on its own (no session bus, not installed) is
+  reported in About and not restarted on every page turn, only after the
+  book is reopened. Tests: the life cycle with a stand-in helper script,
+  and the real helper without a session bus.
+- **SDL's own inhibition** is turned off (`SDL_HINT_VIDEO_ALLOW_SCREENSAVER`):
+  on a desktop it kept the screen on for as long as the app ran, even idle
+  in the library.
+
+## D29. A complete About screen, as DeckVideoPlayer's
+
+The About drawer follows DeckVideoPlayer's (its D34), from the library
+menu and now also the reading menu (just above *Close book*):
+
+- **The project:** version, status (beta), build date and commit
+  (`scripts/build-info.sh`, "development build" from source), developer,
+  source code, licence, copyright, the no-warranty note.
+- **Support the project:** the Ko-fi link, as in the README.
+- **System**, what a bug report needs:
+  - the engine version (crengine-ng, patched), and the SDL, FreeType and
+    HarfBuzz versions actually loaded (from the runtime);
+  - the device (DMI: `Galileo` = Steam Deck OLED, `Jupiter` = LCD,
+    else PC);
+  - the screen size, session (game mode or the desktop's name) and video
+    driver;
+  - the keep-awake status (D28);
+  - the book folders, and the settings, data and cache paths, written
+    with `~`.
+- **Credits:** crengine-ng, SDL3, FreeType, HarfBuzz, FriBiDi, libunibreak,
+  utf8proc, nlohmann/json, the three fonts (OFL), the hyphenation
+  patterns; the companion app.
+- The **trademark notice** (not affiliated with Valve), then *Close*.
+
+The pure parts (build info, device name, `~` paths) are in `src/about.*`
+with unit tests. Menus gained **section headers** and **separators** that
+the cursor skips. Scrolling up onto a section's first row shows its
+header, as in DeckVideoPlayer.
+
+Menu rows now share their width as DeckVideoPlayer's (its D32): label and
+value each get their full width when both fit; otherwise the label keeps
+up to 45% and the value the rest, both shortened with "…". Before, a value
+never took more than 45% of the panel, which cut paths short. The drawer
+is 760 units wide, so the Flatpak's data path fits at 1280×800.

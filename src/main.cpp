@@ -61,6 +61,10 @@ int main(int argc, char** argv) {
     // DeckVideoPlayer does; elsewhere SDL picks the best driver.
     if (std::getenv("GAMESCOPE_WAYLAND_DISPLAY") && !std::getenv("SDL_VIDEO_DRIVER"))
         SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "x11,wayland");
+    // SDL would keep the screensaver off for as long as the app runs (where
+    // it can: desktop sessions), even idle in the library. DeckReader keeps
+    // the screen awake itself, only while a book is being read (D28).
+    SDL_SetHint(SDL_HINT_VIDEO_ALLOW_SCREENSAVER, "1");
     // The Steam Deck's controls arrive through Steam Input's virtual pad.
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_EVENTS)) {

@@ -21,6 +21,8 @@ struct MenuItem {
     std::function<void()> secondary;      // X (optional)
     int indent = 0;                       // TOC levels
     bool marked = false;                  // e.g. the current chapter
+    bool header = false;                  // section title: the cursor skips it
+    bool separator = false;               // a line: the cursor skips it
 };
 
 class Menu {
@@ -46,6 +48,13 @@ public:
 private:
     int visible_rows(float canvas_h) const;
     void keep_visible(int rows);
+    bool selectable(int i) const;
+    // The nearest selectable row from `from` going `dir` (±1), wrapping
+    // around or stopping at the ends; `from` itself if none.
+    int step(int from, int dir, bool wrap) const;
+    // `i` if selectable, else the nearest selectable row towards `dir`, or
+    // the other way if there is none.
+    int nearest(int i, int dir) const;
     int scroll_ = 0;
     float row_y0_ = 0, row_h_ = 52;
     int rows_drawn_ = 0;

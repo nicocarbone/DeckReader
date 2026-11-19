@@ -1,13 +1,16 @@
 // Unit tests for DeckReader's pure logic. Run by tests/run.sh (inside the
 // SDK). With DECKREADER_TEST_BOOK set (and the fonts/engine folders), an
 // integration test also opens, lays out and renders a real book.
+#include "about.h"
 #include "book.h"
 #include "canvas.h"
 #include "config.h"
 #include "epubguard.h"
 #include "fsutil.h"
 #include "input.h"
+#include "keepawake.h"
 #include "library.h"
+#include "menu.h"
 #include "metacache.h"
 #include "settings.h"
 #include "state.h"
@@ -21,6 +24,7 @@
 #include <cstring>
 #include <functional>
 #include <string>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
 
@@ -118,6 +122,21 @@ TEST(config_values) {
     CHECK_EQ(c.accent, 0xFF8800u);
     CHECK(!c.tap_zones);
     CHECK(c.warnings.empty());
+}
+
+TEST(config_keep_awake) {
+    Config c = parse_config("", "/h");
+    CHECK(c.keep_awake);
+    CHECK_EQ(c.keep_awake_minutes, 10);
+    c = parse_config("[reader]\nkeep_awake = no\nkeep-awake-minutes = 30\n", "/h");
+    CHECK(!c.keep_awake);
+    CHECK_EQ(c.keep_awake_minutes, 30);
+    CHECK(c.warnings.empty());
+    for (const char* bad : {"0", "241", "ten", "", "5 min"}) {
+        c = parse_config(std::string("[reader]\nkeep_awake_minutes = ") + bad + "\n", "/h");
+        CHECK_EQ(c.keep_awake_minutes, 10);
+        CHECK_EQ(c.warnings.size(), 1u);
+    }
 }
 
 TEST(config_warnings) {
@@ -296,6 +315,141 @@ TEST(library_folder_listing) {
     write_file_atomic(d + "/.hidden.epub", "x");
     std::vector<LibEntry> v = list_folder(d);
     CHECK_EQ(v.size(), 2u); // Sub and b.epub only
+}
+
+// --- menus and About ------------------------------------------------------------------
+
+TEST(menu_headers_skipped) {
+    MenuItem head;
+    head.label = "Section";
+    head.header = true;
+    MenuItem sep;
+    sep.separator = true;
+    Menu m;
+    m.items = {head, {"One"}, {"Two"}, sep, head, {"Three"}};
+    auto press = [&](Action a, bool repeat = false) {
+        m.handle({a, Source::Script, repeat});
+        return m.selected;
+    };
+    CHECK_EQ(press(Action::Down), 2);       // starts on "One", not the header
+    CHECK_EQ(press(Action::Down), 5);       // over the line and the header
+    CHECK_EQ(press(Action::Down), 1);       // wraps around, past the header
+    CHECK_EQ(press(Action::Up), 5);
+    CHECK_EQ(press(Action::Up, true), 2);   // held
+    CHECK_EQ(press(Action::Up, true), 1);
+    CHECK_EQ(press(Action::Up, true), 1);   // held: stops at the first row
+    CHECK_EQ(press(Action::R2), 5);
+    CHECK_EQ(press(Action::L2), 1);
+    CHECK(m.handle({Action::Back, Source::Script, false}) == false);
+}
+
+TEST(about_helpers) {
+    BuildInfo b = parse_build_info("date=2026-11-18\ncommit=1a2b3c4-modified\n");
+    CHECK_EQ(b.date, "2026-11-18");
+    CHECK_EQ(b.commit, "1a2b3c4-modified");
+    CHECK_EQ(build_text(b), "2026-11-18 \xC2\xB7 1a2b3c4-modified");
+    CHECK_EQ(build_text(parse_build_info("date=2026-11-18\ncommit=\n")), "2026-11-18");
+    CHECK_EQ(build_text(parse_build_info("")), "development build");
+    CHECK_EQ(device_name("Valve", "Galileo"), "Steam Deck OLED");
+    CHECK_EQ(device_name("Valve", "Jupiter"), "Steam Deck LCD");
+    CHECK_EQ(device_name("Micro-Star International Co., Ltd.", "MS-7C91"), "PC");
+    CHECK_EQ(device_name("", ""), "PC");
+    CHECK_EQ(short_path("/home/deck/.config/deckreader", "/home/deck"), "~/.config/deckreader");
+    CHECK_EQ(short_path("/home/deckard/Books", "/home/deck"), "/home/deckard/Books");
+    CHECK_EQ(short_path("/run/media/deck/SD", "/home/deck"), "/run/media/deck/SD");
+    CHECK_EQ(short_path("/home/deck/x", ""), "/home/deck/x");
+}
+
+// --- keep awake (D28) -------------------------------------------------------------------
+
+static std::string wait_status(KeepAwake& ka) {
+    std::string st;
+    for (int i = 0; i < 300; i++) {
+        st = ka.status();
+        if (st != "starting\xE2\x80\xA6" && (ka.held() || st != "Only while reading"))
+            break;
+        usleep(10000);
+    }
+    return st;
+}
+
+TEST(keep_awake_status_file) {
+    CHECK_EQ(parse_keep_awake_status("request: screensaver accepted, portal not running\n"),
+             "screensaver accepted, portal not running");
+    CHECK_EQ(parse_keep_awake_status(""), "");
+    CHECK_EQ(parse_keep_awake_status("garbage"), "");
+}
+
+// The helper's life, with a stand-in that reports like the real one.
+TEST(keep_awake_lifecycle) {
+    std::string dir = temp_dir();
+    std::string fake = dir + "/fake-helper", status = dir + "/status";
+    write_file_atomic(fake, "#!/bin/sh\n[ \"$1\" = --status ] && "
+                            "printf 'request: screensaver accepted, portal not running\\n' > \"$2\"\n"
+                            "exec sleep 30\n");
+    chmod(fake.c_str(), 0755);
+    KeepAwake ka;
+    ka.setup(fake, status, 0); // keep_awake = no
+    ka.activity(1000);
+    CHECK(!ka.held());
+    CHECK_EQ(ka.next_due(1000), -1);
+    CHECK_EQ(ka.status(), "Off (config.ini)");
+
+    ka.setup(fake, status, 10);
+    CHECK_EQ(ka.status(), "Only while reading");
+    ka.activity(1000);
+    CHECK(ka.held());
+    CHECK_EQ(ka.next_due(1000), 600000);
+    CHECK_EQ(wait_status(ka), "screensaver accepted, portal not running");
+    ka.activity(301000); // input: ten minutes from now
+    CHECK_EQ(ka.next_due(301000), 600000);
+    ka.tick(900999);
+    CHECK(ka.held());
+    ka.tick(901000); // ten minutes without input
+    CHECK(!ka.held());
+    CHECK_EQ(ka.next_due(901000), -1);
+    CHECK(!is_file(status));
+    CHECK_EQ(ka.status(), "Only while reading");
+    ka.activity(902000); // reading again
+    CHECK(ka.held());
+    ka.release(); // book closed
+    CHECK(!ka.held());
+
+    // A missing helper is reported and not retried on every page turn.
+    ka.setup(dir + "/missing", status, 10);
+    ka.activity(0);
+    CHECK(!ka.held());
+    CHECK_EQ(ka.status(), "deckreader-keep-awake not found");
+    ka.activity(1);
+    CHECK(!ka.held());
+}
+
+// The real helper (built next to this test) without a session bus: it
+// exits and the reason is shown.
+TEST(keep_awake_real_helper) {
+    char exe[PATH_MAX] = {0};
+    ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
+    std::string helper = path_join(path_dirname(std::string(exe, n > 0 ? static_cast<size_t>(n) : 0)),
+                                   "deckreader-keep-awake");
+    CHECK(is_file(helper));
+    const char* old = std::getenv("DBUS_SESSION_BUS_ADDRESS");
+    std::string saved = old ? old : "";
+    setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent/bus", 1);
+    KeepAwake ka;
+    ka.setup(helper, temp_dir() + "/status", 10);
+    ka.activity(0);
+    if (old)
+        setenv("DBUS_SESSION_BUS_ADDRESS", saved.c_str(), 1);
+    else
+        unsetenv("DBUS_SESSION_BUS_ADDRESS");
+    std::string st;
+    for (int i = 0; i < 300 && ka.held(); i++) {
+        st = ka.status();
+        usleep(10000);
+    }
+    st = ka.status();
+    CHECK(!ka.held());
+    CHECK_EQ(st, "screensaver no session bus, portal no session bus");
 }
 
 // --- input ------------------------------------------------------------------------------

@@ -12,6 +12,12 @@ spacing, contents, bookmarks, left-stick scrub, HUD with battery and
 clock), saving on every page turn, Flatpak, SteamOS installer, Steam
 artwork. See CHANGELOG.md.
 
+## v0.2.0: keep awake, About (released 2026-11-18)
+
+- The screen stays awake while reading, with a limit without input (D28);
+  confirmed on the owner's Steam Deck.
+- A complete About screen, also in the reading menu (D29).
+
 ## v0.1.x: from the first Deck test
 
 - Run the on-device checklist (DEVELOPMENT.md §7); fix what it finds.
@@ -24,8 +30,10 @@ artwork. See CHANGELOG.md.
   battery drain while reading.
 - Send the soft-hyphen fix upstream to crengine-ng (D3), and the
   variation-selector one (D26).
+- DeckVideoPlayer's dvp-keep-awake could take D28's changes (UnInhibit on
+  stop, no wake-ups while holding).
 
-## v0.2: reading comfort
+## v0.3: reading comfort
 
 - Footnotes in a popup (links followed with the controller).
 - Fallback fonts for CJK, Arabic and Hebrew text (Noto subsets; D9).
@@ -35,7 +43,7 @@ artwork. See CHANGELOG.md.
 - Book info: series, description; delete or hide a book.
 - More formats crengine already reads: FB2, MOBI (no DRM), TXT.
 
-## v0.3: OPDS catalogues (requirements 6.2)
+## v0.4: OPDS catalogues (requirements 6.2)
 
 - OPDS feeds from Calibre-web, Kavita, Komga: browse, search, download
   into the library folder with progress; read offline.

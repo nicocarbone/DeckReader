@@ -120,7 +120,7 @@ Every screen (Library, Reader, Table of Contents, Settings) must be 100% operabl
 | L1 / R1 | page through the list | previous / next page | page through the list |
 | L2 / R2 | first / last | previous / next chapter (DVP: chapters) | first / last |
 | View (⧉) | book info (DVP: video info) | Table of Contents | — |
-| Menu (☰) | menu (refresh, about, quit) | reading settings | — |
+| Menu (☰) | menu (refresh, about, quit) | reading settings (and about) | — |
 | Left stick | as the D-pad | **hold left/right to scrub** with a live page/chapter preview; up/down as the D-pad | as the D-pad |
 
 The Steam and "…" buttons stay with Steam. Keyboard keys match `DeckVideoPlayer`'s (arrows, Enter, Backspace, x, y, m, i, PgUp/PgDn, Home/End, Ctrl+Q).
@@ -130,6 +130,8 @@ The Steam and "…" buttons stay with Steam. Keyboard keys match `DeckVideoPlaye
 ### 5.2 SteamOS Lifecycle \& HUD
 
 - **Suspend/Resume Safety:** The reading position is saved on every page turn (the first change after a pause immediately, then at most every 2 s), when the window loses focus (Steam overlay), when the book is closed and on exit (SIGTERM from Steam included). No sleep signal is needed: whatever was on screen when SteamOS slept is already on disk.
+- **Screen stays awake while reading:** SteamOS dims the screen and sleeps on Steam's idle timer, which a reader would otherwise hit on every slow page. While a book is open the app asks Steam not to (a screensaver inhibition, as `DeckVideoPlayer` does during playback); after a configurable time without input (10 minutes by default) and in the library, Steam's own timers apply again, so a Deck left on the table still dims and sleeps.
+- **About screen:** version and build, source code, licence, how to support the project, the details a bug report needs (versions, device, screen, keep-awake status, folders) and credits, as in `DeckVideoPlayer`; from the library menu and the reading menu.
 - **Cursor Management:** Hide the mouse cursor automatically in Game Mode unless mouse/trackpad pointer movement is detected (consistent with `DeckVideoPlayer`).
 - **Optional progress line:** a reading setting adds a discreet line under the text with the percentage read, the pages left in the chapter and the pages left in the book, in its own band (text never runs under it), at no cost to page turns.
 - **Minimalist HUD (hidden by default while reading):** Styled consistently with `DeckVideoPlayer`'s OSD, displaying Book Title, Chapter Title, Current/Total Pages, Percentage Read, pages left in the chapter, and **System Battery % + Local Time** (essential in fullscreen Gamescope where the system top bar is hidden).

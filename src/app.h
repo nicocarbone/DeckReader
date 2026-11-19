@@ -7,6 +7,7 @@
 #include "config.h"
 #include "display.h"
 #include "input.h"
+#include "keepawake.h"
 #include "library_screen.h"
 #include "menu.h"
 #include "metacache.h"
@@ -28,6 +29,7 @@ struct Paths {
     std::string config_dir;  // ~/.config/deckreader (config.ini)
     std::string data_dir;    // $XDG_DATA_HOME/deckreader (state.json)
     std::string cache_dir;   // $XDG_CACHE_HOME/deckreader (covers, layouts)
+    std::string bin_dir;     // where the executable is (/app/bin): helpers
     std::string app_data;    // /app/share/deckreader (fonts, config template)
     std::string engine_data; // /app/share/crengine-ng (CSS, hyphenation)
     static Paths detect();
@@ -54,6 +56,7 @@ public:
     TextRenderer text;
     Input input;
     UiTheme theme;
+    KeepAwake keep_awake; // while reading (D28)
 
     uint64_t now() const { return now_; }
     // Pixels per layout unit for book pages (screen height / 800).
@@ -80,6 +83,8 @@ private:
     void loop();
     void handle_event(const SDL_Event& e);
     void dispatch(const InputEvent& e);
+    // The reader was used: keep the screen awake a while longer (D28).
+    void reading_activity();
     void tap(float x_px, float y_px);
     void tick();
     void render();
