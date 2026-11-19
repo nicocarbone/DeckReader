@@ -105,7 +105,10 @@ and tag:
   `scripts/dev-build.sh` and `tests/run.sh`. The engine tests on real books
   are skipped there (no sample books); the generated ones run.
 - `flatpak`: builds the bundle in
-  `ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08`.
+  `ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08`, on a
+  copy of the image's Flatpak installation (`FLATPAK_SYSTEM_DIR`):
+  updating the image's own runtimes failed with "Invalid cross-device
+  link" (D30).
 - `release` (tags `v*`): checks that the tag is `v` + the version in
   `CMakeLists.txt`, then attaches to a GitHub release:
   `DeckReader.flatpak`; `DeckReader-<tag>.tar.gz`, what users download

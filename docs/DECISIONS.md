@@ -484,3 +484,31 @@ value each get their full width when both fit; otherwise the label keeps
 up to 45% and the value the rest, both shortened with "…". Before, a value
 never took more than 45% of the panel, which cut paths short. The drawer
 is 760 units wide, so the Flatpak's data path fits at 1280×800.
+
+## D30. CI: the Flatpak job updates a copy of the image's runtimes
+
+- **Problem:** the `flatpak` job failed now and then with "Failed to
+  update org.freedesktop.Sdk: Invalid cross-device link", before anything
+  was built. The release of v0.2.0 needed three attempts; DeckVideoPlayer
+  hit it too. The container image
+  (`ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08`) has
+  the SDK installed system-wide in its read-only lower layer, and the
+  image was 8 weeks old. flatpak-builder (`--install-deps-from=flathub`)
+  updates the SDK first, and finishing an update renames the old
+  deployment's folder, which overlayfs refuses for lower-layer folders on
+  some hosts.
+- **Reproduced** with the same image under Docker on the dev PC (overlay2
+  on ext4): `flatpak --system update org.freedesktop.Sdk//26.08` fails
+  with that error every time.
+- **Fix:** a step before the build copies `/var/lib/flatpak` to
+  `$RUNNER_TEMP` (the job's folder, a host directory, not the overlay;
+  `cp -a` keeps the hard links, 3.2 GB in a few seconds) and sets
+  `FLATPAK_SYSTEM_DIR` to it for the following steps. That variable is
+  flatpak's documented override for the system installation; every flatpak
+  command the action runs is a subprocess and inherits it. The runtimes
+  stay pre-installed, so only the update is downloaded.
+- **Verified:**
+  - With the copy, the same update succeeds in the image.
+  - A full action-style build in the image (`xvfb-run flatpak-builder
+    --install-deps-from=flathub …`, then `flatpak build-bundle`) works.
+- The same step is in DeckVideoPlayer's workflow (its D83).
