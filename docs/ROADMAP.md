@@ -33,7 +33,29 @@ artwork. See CHANGELOG.md.
 - DeckVideoPlayer's dvp-keep-awake could take D28's changes (UnInhibit on
   stop, no wake-ups while holding).
 
-## v0.3: reading comfort
+## v0.3: web articles from wallabag, reading comfort
+
+Web articles saved on the phone with [wallabag](https://wallabag.org)
+(self-hosted or wallabag.it), read on the Deck like books.
+
+- Opt-in: no UI until `config.ini` has the server address, an API client
+  (ID and secret, created in wallabag under Developer) and the account's
+  username and password.
+- "Update articles" in the library menu downloads the unread entries as
+  EPUBs into an Articles folder in the app's data folder (book folders
+  stay read-only, D4), listed in the library like a book folder; entries
+  no longer unread in wallabag are removed. The network is used only
+  then, never in the background.
+- API: OAuth2 token (`/oauth/v2/token`, password grant), the list of
+  unread entries, and each entry's EPUB export. Confirm the export call
+  against a real server first; if it isn't usable, build the EPUB from
+  the entry's HTML.
+- Possibly: mark an article read (archived) in wallabag when finished.
+- HTTP through libcurl, which is in the Freedesktop runtime.
+- Needs network permission in the Flatpak: a new decision (D4 says none),
+  and the README's "no network access at all" claim changes.
+
+Reading comfort:
 
 - Footnotes in a popup (links followed with the controller).
 - Fallback fonts for CJK, Arabic and Hebrew text (Noto subsets; D9).
@@ -50,7 +72,7 @@ artwork. See CHANGELOG.md.
 - Credentials in `config.ini` first; then a controller on-screen keyboard
   built so DeckVideoPlayer can reuse it (its roadmap needs a first text
   field too).
-- Needs network permission in the Flatpak (only then).
+- Uses the network permission added for wallabag (v0.3).
 
 ## Later / ideas
 
