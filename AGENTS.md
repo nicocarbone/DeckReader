@@ -83,7 +83,7 @@ look at them before finishing.
   them or their contents. Published pictures come from public-domain books
   (`tools/make-screenshots.sh`).
 
-## Current state (2026-11-21, v0.3.0 released)
+## Current state (2026-11-21, v0.3.1 released)
 
 - First version written and tested headless (offscreen and gamescope, at
   1280×800 and 4K) with nine real EPUBs (Spanish and English): all open
@@ -120,3 +120,6 @@ look at them before finishing.
   (ISSUES.md, Gemini) reviewed in D32: most items fixed (pictures only
   from the internet, Substack-style srcset, paging, Stop updating), the
   rest declined with reasons.
+- v0.3.1 released on 2026-11-21: Mark as read / unread in the library
+  menu (D34), tested with unit tests and headless runs and confirmed on
+  the owner's Steam Deck with test bundle v0.3.1-test1.

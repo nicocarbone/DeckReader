@@ -51,6 +51,16 @@ public:
     BookState& at(const std::string& book);
     // Its position, bookmarks and place in the recent list (a removed article).
     void forget(const std::string& book);
+    // "Mark as read" / "Mark as unread" in the library (D34, as
+    // DeckVideoPlayer's D42). Both clear the position: a book marked as
+    // read is finished (✓) and opens at its last page; one marked as
+    // unread starts again at 0%. Bookmarks and the place among the recent
+    // books stay.
+    void mark_read(const std::string& book, bool read);
+    // Which of the two the library offers: a partly read book both.
+    static bool can_mark_read(const BookState* b) { return !b || !b->finished; }
+    // (A few pages into a long book are still 0%: the page counts too.)
+    static bool can_mark_unread(const BookState* b) { return b && (b->finished || b->percent > 0 || b->page > 0); }
     // Books opened before, most recent first (not the hidden ones).
     std::vector<std::string> recent(size_t max) const;
 

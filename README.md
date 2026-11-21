@@ -41,7 +41,8 @@ look, same buttons, same installer.
 - **Library** from `~/Books` and any other folder, microSD cards and USB
   drives: covers, titles and authors, reading progress, sorting by title,
   author, last read or newest, and your **recently read** books on the
-  start screen, so A resumes the last one.
+  start screen, so A resumes the last one. Mark any book or article as
+  read (✓) or unread (back to 0%) from the menu.
 - **Web articles from wallabag**: save articles on your phone with
   wallabag (the hosted wallabag.it or your own server) and read them on
   the Deck, pictures included, from an **Articles** shelf. Mark one as
@@ -159,7 +160,7 @@ and reading positions are kept).
 | **D-pad ↑ ↓** | Move | Previous / next chapter |
 | **L2 / R2** | First / last item | Previous / next chapter |
 | **View** | Book info | Contents |
-| **Menu** | Library menu (update articles, mark as read in wallabag, refresh, remove from recently read, about, quit) | Reading settings, bookmarks, mark as read in wallabag, about |
+| **Menu** | Library menu (update articles, mark as read or unread, mark as read in wallabag, refresh, remove from recently read, about, quit) | Reading settings, bookmarks, mark as read in wallabag, about |
 | **Left stick** | Move | Hold left or right to scrub through the book |
 | **Touchscreen** | Tap a row | Tap the edges or swipe: page; tap the middle: overlay |
 

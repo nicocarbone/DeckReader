@@ -49,6 +49,12 @@ Web articles saved on the phone with [wallabag](https://wallabag.org)
 - Parallel picture downloads only if updates turn out slow on the Deck
   (D32).
 
+## v0.3.1: mark as read or unread (released 2026-11-21)
+
+- Mark any book or article as read (✓) or unread (back to 0%) from the
+  library menu, as DeckVideoPlayer's watched/unwatched (D34); confirmed
+  on the owner's Steam Deck (test bundle v0.3.1-test1).
+
 ## v0.3.x: reading comfort
 
 - Footnotes in a popup (links followed with the controller).

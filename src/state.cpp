@@ -201,6 +201,15 @@ void StateStore::forget(const std::string& book) {
         dirty_ = true;
 }
 
+void StateStore::mark_read(const std::string& book, bool read) {
+    BookState& b = books_[book];
+    b.finished = read;
+    b.percent = read ? 10000 : 0;
+    b.xpointer.clear();
+    b.page = 0;
+    dirty_ = true;
+}
+
 std::vector<std::string> StateStore::recent(size_t max) const {
     std::vector<std::pair<int64_t, std::string>> order;
     for (const auto& [p, b] : books_)

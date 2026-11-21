@@ -5,6 +5,26 @@ text of its GitHub release (CI extracts it, see `docs/DEVELOPMENT.md` §6),
 so write it for people installing the app, and add one for every release.
 Design details behind each change are in [docs/DECISIONS.md](docs/DECISIONS.md).
 
+## 0.3.1 (2026-11-21)
+
+Any book or article can now be marked as read or as unread.
+
+**Install or update:** in Desktop Mode, download `DeckReader-v0.3.1.tar.gz`
+below, extract it and run `./scripts/install-steamos.sh` in Konsole.
+Updating keeps your settings, reading positions and bookmarks. Full steps
+are in the
+[README](https://github.com/nicocarbone/DeckReader#install-on-steam-deck-and-steamos).
+
+### Library
+
+- **Mark as read** and **Mark as unread**, in the library menu (Menu) on
+  any book or article. A book marked as read gets the check mark of a
+  finished book and opens at its last page; marked as unread, it starts
+  again from the beginning, at 0%. A partly read book offers both. Its
+  bookmarks are kept, and so is its place among your recently read books.
+  For an article this only changes the Deck: *Mark as read in wallabag*
+  still archives it in wallabag and removes it.
+
 ## 0.3.0 (2026-11-21)
 
 Web articles: the articles you save on your phone with wallabag now

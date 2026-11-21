@@ -763,3 +763,29 @@ none left out, about 14 s.
 - **Checks:** the `tests` and `flatpak` jobs run on the push to `main`;
   the `release` job (download-artifact, action-gh-release) runs only on
   the next tag, so that release's run is its check.
+
+## D34. Mark as read / unread (v0.3.1), as DeckVideoPlayer
+
+- **Asked by the owner:** mark any book or article as unread (progress
+  back to 0) or as read (with the check mark of a finished book).
+- **As DeckVideoPlayer's *Mark as watched* / *Mark as unwatched* (its
+  D42):** two entries in the library menu on the selected book or
+  article, also on the start screen's recent books. A partly read book
+  offers both; a finished one only *unread*; one never opened (or back at
+  its first page) only *read*. Pages count as well as the percentage, so
+  a book a few pages into its 2,000 (still 0%) offers *unread* too.
+- **What each one leaves** (`StateStore::mark_read`): both clear the
+  position (as DeckVideoPlayer's watched does). *Read* sets `finished`
+  and 100%; *unread* clears both. Bookmarks stay, and so does `last_read`,
+  so a book keeps its place among the recent books (DeckVideoPlayer keeps
+  an unwatched file in *Recently played*); marking a book never opened as
+  read doesn't add it there.
+- **A book marked as read opens at its last screen** (`ReaderScreen::open`:
+  finished with no position), as a book read to the end does, so it stays
+  finished; X still reads it from the beginning. `finished` stays
+  derived from the position, saved on every page turn (D6): reading it
+  again clears the check mark, as before.
+- **Articles:** the same two entries, next to *Mark as read in wallabag*.
+  They only change the Deck; the wallabag one archives the article and
+  removes it (D31). No new button: the menu, as in DeckVideoPlayer.
+

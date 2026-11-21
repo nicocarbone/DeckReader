@@ -947,6 +947,49 @@ TEST(state_hidden_and_progress_line) {
     CHECK(a.layout_differs(b)); // the band under the text changes the layout
 }
 
+TEST(state_mark_read_unread) {
+    // D34: what the library menu offers, and what each one leaves.
+    StateStore s;
+    CHECK(StateStore::can_mark_read(nullptr)); // never opened: only "read"
+    CHECK(!StateStore::can_mark_unread(nullptr));
+    BookState& b = s.at("/half.epub");
+    b.xpointer = "/body/p[40]";
+    b.percent = 4200;
+    b.page = 41;
+    b.pages = 100;
+    b.last_read = 7;
+    b.bookmarks.push_back({"/body/p[3]", 300, "One", 1});
+    CHECK(StateStore::can_mark_read(&b)); // partly read: both
+    CHECK(StateStore::can_mark_unread(&b));
+    s.mark_read("/half.epub", true);
+    CHECK(s.dirty());
+    CHECK(b.finished);
+    CHECK_EQ(b.percent, 10000);
+    CHECK(b.xpointer.empty()); // opens at its last page
+    CHECK(!StateStore::can_mark_read(&b));
+    CHECK(StateStore::can_mark_unread(&b));
+    CHECK_EQ(b.bookmarks.size(), 1u);
+    CHECK_EQ(s.recent(5).size(), 1u); // still among the recent books
+    s.mark_read("/half.epub", false);
+    CHECK(!b.finished);
+    CHECK_EQ(b.percent, 0);
+    CHECK(b.xpointer.empty());
+    CHECK_EQ(b.page, 0);
+    CHECK(StateStore::can_mark_read(&b));
+    CHECK(!StateStore::can_mark_unread(&b)); // nothing left to clear
+    b.page = 8; // a few pages into a long book: still 0%
+    CHECK(StateStore::can_mark_unread(&b));
+    b.page = 0;
+    CHECK_EQ(b.bookmarks.size(), 1u);
+    CHECK_EQ(s.recent(5).size(), 1u);
+    // A book never opened, marked as read: finished, not a recent book.
+    s.mark_read("/new.epub", true);
+    StateStore t;
+    CHECK(t.from_json(s.to_json()));
+    CHECK(t.find("/new.epub") && t.find("/new.epub")->finished && t.find("/new.epub")->xpointer.empty());
+    CHECK_EQ(t.recent(5).size(), 1u);
+}
+
 TEST(input_two_controllers) {
     Input in;
     std::vector<InputEvent> out;

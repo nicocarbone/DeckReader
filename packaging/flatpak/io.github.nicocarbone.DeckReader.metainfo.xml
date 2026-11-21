@@ -75,6 +75,9 @@
   <url type="donation">https://ko-fi.com/nicocarbone</url>
   <releases>
     <!-- Set the date when tagging the release (docs/DEVELOPMENT.md §6). -->
+    <release version="0.3.1" date="2026-11-21">
+      <description><p>Any book or article can be marked as read (shown with a check mark) or as unread (back to 0%) from the library menu.</p></description>
+    </release>
     <release version="0.3.0" date="2026-11-21">
       <description><p>Web articles from wallabag (wallabag.it or your own server): unread articles download with their pictures into an Articles shelf, and can be marked as read in wallabag from the Deck. Folders can be sorted by newest.</p></description>
     </release>

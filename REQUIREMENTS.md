@@ -120,7 +120,7 @@ Every screen (Library, Reader, Table of Contents, Settings) must be 100% operabl
 | L1 / R1 | page through the list | previous / next page | page through the list |
 | L2 / R2 | first / last | previous / next chapter (DVP: chapters) | first / last |
 | View (⧉) | book info (DVP: video info) | Table of Contents | — |
-| Menu (☰) | menu (update or stop updating articles, mark as read in wallabag, refresh, about, quit) | reading settings (mark as read in wallabag, about) | — |
+| Menu (☰) | menu (update or stop updating articles, mark as read or unread (DVP: watched/unwatched), mark as read in wallabag, refresh, about, quit) | reading settings (mark as read in wallabag, about) | — |
 | Left stick | as the D-pad | **hold left/right to scrub** with a live page/chapter preview; up/down as the D-pad | as the D-pad |
 
 The Steam and "…" buttons stay with Steam. Keyboard keys match `DeckVideoPlayer`'s (arrows, Enter, Backspace, x, y, m, i, PgUp/PgDn, Home/End, Ctrl+Q).

@@ -223,6 +223,18 @@ void LibraryScreen::open_menu() {
                                 app_.close_menus();
                                 app_.articles->update();
                             }});
+    if (sel && sel->kind == LibEntry::Book) {
+        // A partly read book offers both (D34, as DeckVideoPlayer's D42).
+        std::string path = sel->path;
+        const BookState* b = app_.state.find(path);
+        for (bool read : {true, false})
+            if (read ? StateStore::can_mark_read(b) : StateStore::can_mark_unread(b))
+                m->items.push_back({read ? "Mark as read" : "Mark as unread", nullptr, nullptr, [this, path, read] {
+                                        app_.state.mark_read(path, read);
+                                        app_.close_menus();
+                                        app_.redraw();
+                                    }});
+    }
     if (sel && sel->kind == LibEntry::Book && app_.articles->is_article(sel->path)) {
         std::string path = sel->path;
         m->items.push_back({"Mark as read in wallabag", nullptr, nullptr, [this, path] {
