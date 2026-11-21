@@ -397,8 +397,7 @@ the patches, in the order they are applied, next to the module they patch
 publishes its source.
 
 The third-party actions are pinned to the same commits as
-DeckVideoPlayer's; GitHub warns that they target Node.js 20 (run on 24),
-to be updated in both projects together.
+DeckVideoPlayer's; updated to the Node.js 24 versions in D33.
 
 ## D28. Keep the screen awake while reading, as DeckVideoPlayer
 
@@ -739,3 +738,28 @@ none left out, about 14 s.
 - **V3-OPT-4 part 2** (closing an article before marking it read writes
   its layout cache and refreshes twice): milliseconds, once per action;
   the engine's cache is bounded (128 MB).
+
+## D33. CI actions on Node.js 24, as DeckVideoPlayer
+
+- **Why:** GitHub deprecated Node.js 20 for actions and ran the pinned
+  ones on Node 24 with a warning (v0.3.0 builds).
+- **Pins:** the same commits as DeckVideoPlayer's D87 (still by hash,
+  D27), each the latest release on 2026-11-21 with `runs.using: node24`:
+  - `actions/checkout` v4 → v7.0.1. v6 keeps the token in a separate file
+    that `.git/config` includes; `scripts/build-info.sh` only reads the
+    commit.
+  - `flatpak-builder`: from `flathub-infra/flatpak-github-actions`
+    (archived in April 2025; its issue 17 sends users back upstream and
+    keeps only the images) to `flatpak/flatpak-github-actions` v6.8. Same
+    inputs, the same `flatpak` calls (so the copied installation of D30
+    still applies through `FLATPAK_SYSTEM_DIR`), the same artifact name
+    (`DeckReader-x86_64.flatpak`). The container image stays
+    `ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08`.
+  - `actions/download-artifact` v4 → v8.0.2: v5 only moved downloads by
+    artifact id (the release job downloads all of them into `artifacts/`
+    and `find`s the bundle); v8 fails on a digest mismatch instead of
+    warning.
+  - `softprops/action-gh-release` v2 → v3.0.4: only the runtime changed.
+- **Checks:** the `tests` and `flatpak` jobs run on the push to `main`;
+  the `release` job (download-artifact, action-gh-release) runs only on
+  the next tag, so that release's run is its check.
