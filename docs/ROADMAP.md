@@ -35,20 +35,21 @@ artwork. See CHANGELOG.md.
 - DeckVideoPlayer's dvp-keep-awake could take D28's changes (UnInhibit on
   stop, no wake-ups while holding).
 
-## v0.3: web articles from wallabag, reading comfort
+## v0.3.0: web articles from wallabag (released 2026-11-21)
 
 Web articles saved on the phone with [wallabag](https://wallabag.org)
 (self-hosted or wallabag.it), read on the Deck like books (D31).
 
-- Done: the `[wallabag]` settings, the Articles source, "Update articles"
+- The `[wallabag]` settings, the Articles source, "Update articles"
   (also Y on Articles), "Mark as read in wallabag" (queued when offline),
   the article EPUBs with their pictures, sorting by newest, the network
-  permission; tested against a fake server and against wallabag.it.
+  permission; tested against a fake server and against wallabag.it, and
+  confirmed on the owner's Steam Deck (test bundle v0.3.0-test2).
 - Second audit reviewed and fixed (D32).
-- To do: try it on the Deck (test bundle; time an update: parallel
-  picture downloads only if it is slow, D32); release.
+- Parallel picture downloads only if updates turn out slow on the Deck
+  (D32).
 
-Reading comfort:
+## v0.3.x: reading comfort
 
 - Footnotes in a popup (links followed with the controller).
 - Fallback fonts for CJK, Arabic and Hebrew text (Noto subsets; D9).

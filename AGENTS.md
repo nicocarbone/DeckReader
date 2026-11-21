@@ -83,7 +83,7 @@ look at them before finishing.
   them or their contents. Published pictures come from public-domain books
   (`tools/make-screenshots.sh`).
 
-## Current state (2026-11-20, v0.2.0 released, v0.3.0 in progress)
+## Current state (2026-11-21, v0.3.0 released)
 
 - First version written and tested headless (offscreen and gamescope, at
   1280×800 and 4K) with nine real EPUBs (Spanish and English): all open
@@ -113,9 +113,10 @@ look at them before finishing.
   (D28; confirmed on the owner's Steam Deck with test bundle
   v0.2.0-test1), and a complete About screen, also in the reading menu
   (D29).
-- v0.3.0 in progress: web articles from wallabag (D31), tested against a
-  fake server (unit tests, headless runs) and against wallabag.it with the
-  owner's account (headless, dev PC); not yet on the Deck. Second audit
+- v0.3.0 released on 2026-11-21: web articles from wallabag (D31),
+  tested against a fake server (unit tests, headless runs) and against
+  wallabag.it with the owner's account (headless, dev PC), and confirmed
+  on the owner's Steam Deck with test bundle v0.3.0-test2. Second audit
   (ISSUES.md, Gemini) reviewed in D32: most items fixed (pictures only
   from the internet, Substack-style srcset, paging, Stop updating), the
   rest declined with reasons.

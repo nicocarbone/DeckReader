@@ -630,6 +630,8 @@ is 760 units wide, so the Flatpak's data path fits at 1280×800.
   headless on the dev PC): 9 unread articles downloaded with their
   pictures (charts, photos, SVG figures), covers and sites in the list,
   a second update downloads nothing.
+- **Confirmed on the owner's Steam Deck** (2026-11-21, test bundle
+  v0.3.0-test2, after D32's fixes); released in v0.3.0.
 - **Found on the way:** crengine's `LVStreamFragment::Read` doesn't stop
   at the end of a stored (uncompressed) ZIP entry; a reader that reads
   until end of stream gets the rest of the file. The engine's own readers

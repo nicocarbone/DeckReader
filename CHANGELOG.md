@@ -5,7 +5,16 @@ text of its GitHub release (CI extracts it, see `docs/DEVELOPMENT.md` §6),
 so write it for people installing the app, and add one for every release.
 Design details behind each change are in [docs/DECISIONS.md](docs/DECISIONS.md).
 
-## 0.3.0 (unreleased)
+## 0.3.0 (2026-11-21)
+
+Web articles: the articles you save on your phone with wallabag now
+download to the Deck, pictures included, and read like books, offline.
+
+**Install or update:** in Desktop Mode, download `DeckReader-v0.3.0.tar.gz`
+below, extract it and run `./scripts/install-steamos.sh` in Konsole.
+Updating keeps your settings, reading positions and bookmarks. Full steps
+are in the
+[README](https://github.com/nicocarbone/DeckReader#install-on-steam-deck-and-steamos).
 
 ### Web articles
 
@@ -13,16 +22,19 @@ Design details behind each change are in [docs/DECISIONS.md](docs/DECISIONS.md).
   [wallabag](https://wallabag.org) (the hosted wallabag.it or your own
   server), from your phone's share menu or a browser, appear on the start
   screen under **Articles**, with their pictures, and read like books.
-  Press Y on Articles (or Menu → *Update articles*) to download the unread
-  ones (Menu → *Stop updating articles* while it runs); the 50 newest are
-  kept, and the ones you read elsewhere are removed. Each article shows its site, authors, date and reading time,
-  and its pictures (downloaded from the sites that host them, never from
-  the Deck itself or your home network; `images = no` for text only). **Mark as read in wallabag**, in the menu while reading or on
-  an article in the library, removes it from the Deck and archives it in
-  wallabag, right away or with the next update if there is no connection.
-  To set it up, fill in the new `[wallabag]` section of
+- Press Y on Articles (or Menu → *Update articles*) to download the
+  unread ones (Menu → *Stop updating articles* while it runs). The 50
+  newest are kept, and the ones you read elsewhere are removed.
+- Each article shows its site, authors, date and reading time. Its
+  pictures are downloaded from the sites that host them, never from the
+  Deck itself or your home network (`images = no` for text only).
+- **Mark as read in wallabag**, in the menu while reading or on an article
+  in the library, removes it from the Deck and archives it in wallabag,
+  right away or with the next update if there is no connection.
+- To set it up, fill in the new `[wallabag]` section of
   `~/.config/deckreader/config.ini` (see
   [CONFIGURATION.md](https://github.com/nicocarbone/DeckReader/blob/main/docs/CONFIGURATION.md#wallabag)).
+  Without it, nothing changes: no Articles shelf, no network use.
 - DeckReader now has network access in its Flatpak, used only for
   wallabag (and the articles' pictures) and only when you update or mark
   an article as read.
