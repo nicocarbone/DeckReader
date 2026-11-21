@@ -22,6 +22,7 @@ non-trivial.
 | Main loop, routing, toasts, timers | `src/app.cpp` |
 | About screen | `src/about.cpp` |
 | Keeping the screen awake while reading | `src/keepawake.cpp` (app side), `helper/deckreader-keep-awake.c` (D-Bus) |
+| wallabag articles (sync, Articles source) | `src/articles.cpp` (app side), `src/wallabag.cpp` (API, pictures, background thread), `src/epubwrite.cpp` (the article EPUB), `src/http.cpp` (libcurl), `tests/fake-wallabag.py` |
 | Saving (state.json), atomic writes | `src/state.cpp`, `src/fsutil.cpp` |
 | EPUB archive checks | `src/epubguard.cpp` |
 | config.ini | `src/config.cpp`, `data/config.ini`, `docs/CONFIGURATION.md` |
@@ -65,6 +66,9 @@ look at them before finishing.
 - Books are untrusted input: every file goes through `check_book_file`
   first (D5), and crengine-ng is patched so the sizes checked are the sizes
   read (D22). Hostile fixtures: `tests/make-hostile-epubs.py`.
+- The network is used only on the user's request (wallabag, D31), from
+  the articles thread, which never touches app state: it reports a result
+  that the main thread applies.
 - Menus may be closed from their own callbacks: use `App::pop_menu` /
   `close_menus`, never destroy a menu directly (D18).
 - New pure logic gets unit tests in `tests/unit_tests.cpp`.
@@ -79,7 +83,7 @@ look at them before finishing.
   them or their contents. Published pictures come from public-domain books
   (`tools/make-screenshots.sh`).
 
-## Current state (2026-11-18, v0.2.0 released)
+## Current state (2026-11-20, v0.2.0 released, v0.3.0 in progress)
 
 - First version written and tested headless (offscreen and gamescope, at
   1280×800 and 4K) with nine real EPUBs (Spanish and English): all open
@@ -94,7 +98,8 @@ look at them before finishing.
   checklist (docs/DEVELOPMENT.md §7) is still open.
 - First audit (ISSUES.md, Gemini) reviewed in D22: fixed except BUG-1 and
   BUG-2 (measured/verified not to happen) and three minor declines.
-  crengine-ng now carries five patches (`patches/`).
+  crengine-ng now carries six patches (`patches/`; the sixth from the
+  second audit, D32).
 - After test3: recently read books on the start screen (D23), optional
   progress line (D24), margins right from the first layout (D25).
 - Release preparation: README rewritten for users and search engines,
@@ -108,3 +113,9 @@ look at them before finishing.
   (D28; confirmed on the owner's Steam Deck with test bundle
   v0.2.0-test1), and a complete About screen, also in the reading menu
   (D29).
+- v0.3.0 in progress: web articles from wallabag (D31), tested against a
+  fake server (unit tests, headless runs) and against wallabag.it with the
+  owner's account (headless, dev PC); not yet on the Deck. Second audit
+  (ISSUES.md, Gemini) reviewed in D32: most items fixed (pictures only
+  from the internet, Substack-style srcset, paging, Stop updating), the
+  rest declined with reasons.

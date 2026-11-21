@@ -3,6 +3,7 @@
 #include "about.h"
 #include "book.h"
 #include "fsutil.h"
+#include "http.h"
 #include "log.h"
 #include "util.h"
 #include "version.h"
@@ -48,6 +49,7 @@ Paths Paths::detect() {
 App::App() = default;
 
 App::~App() {
+    articles.reset(); // stops its thread
     for (auto& [id, pad] : gamepads_)
         SDL_CloseGamepad(pad);
     library_.reset();
@@ -73,9 +75,9 @@ std::string App::mountinfo() const {
     return text;
 }
 
-void App::toast(const std::string& message) {
+void App::toast(const std::string& message, uint64_t ms) {
     toast_ = message;
-    toast_until_ = now_ + 2200;
+    toast_until_ = now_ + ms;
     redraw();
 }
 
@@ -104,6 +106,20 @@ void App::open_book(const std::string& path, bool from_start) {
     pending_.from_start = from_start;
     pending_.active = true;
     pending_.shown = false;
+    redraw();
+}
+
+std::string App::open_book_path() const {
+    return screen_ == Screen::Reader && reader_ && reader_->is_open() ? reader_->book().path() : std::string();
+}
+
+bool App::showing_articles() const {
+    return screen_ == Screen::Library && library_ && library_->in_articles();
+}
+
+void App::refresh_library() {
+    if (screen_ == Screen::Library && library_)
+        library_->refresh();
     redraw();
 }
 
@@ -176,6 +192,10 @@ void App::tap(float x_px, float y_px) {
 }
 
 void App::handle_event(const SDL_Event& e) {
+    if (articles && e.type == articles->event_type()) {
+        articles->on_wake();
+        return;
+    }
     std::vector<InputEvent> actions;
     switch (e.type) {
     case SDL_EVENT_QUIT:
@@ -492,6 +512,7 @@ void App::loop() {
 
 int App::run(const AppOptions& opt) {
     uint64_t t0 = mono_ms();
+    http_global_init(); // before any thread (D31)
     paths = Paths::detect();
     make_dirs(paths.config_dir);
     make_dirs(paths.data_dir);
@@ -528,6 +549,7 @@ int App::run(const AppOptions& opt) {
     overlay_.resize(display.width(), display.height());
     make_backdrop();
 
+    articles = std::make_unique<Articles>(*this);
     library_ = std::make_unique<LibraryScreen>(*this);
     reader_ = std::make_unique<ReaderScreen>(*this);
     if (!opt.script.empty())
@@ -550,6 +572,10 @@ int App::run(const AppOptions& opt) {
 
     flush();
     reader_->close();
+    // A sync still running is cancelled; what it downloaded stays, what it
+    // archived is archived again next time (harmless).
+    articles.reset();
+    http_global_cleanup();
     state.save();
     return 0;
 }

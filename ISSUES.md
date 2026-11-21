@@ -1,3 +1,228 @@
+# DeckReader v0.3.0 Audit — Wallabag Article Sync
+
+> **Reviewed 2026-11-20.** Outcome of every item (fixed, or declined with
+> the reason) is recorded in [docs/DECISIONS.md](docs/DECISIONS.md) D32.
+
+Audit of the `v0.3.0` candidate changes (`src/http.*`, `src/epubwrite.*`, `src/wallabag.*`, `src/articles.*`, `src/app.*`, `src/config.*`, `src/library*`, `src/reader_screen.cpp`, `src/state.*`, `src/ui.*`, `src/log.cpp`, `src/about.cpp`, `packaging/`, `scripts/`, `docs/`, and `tests/fake-wallabag.py` + `tests/unit_tests.cpp`).
+
+Baseline: `tests/run.sh` passes (`639 checks, 0 failed`, `10` Python shortcut tests).
+
+---
+
+## 1. Security & Network Hardening
+
+### V3-SEC-1. SSRF / loopback & LAN requests when fetching untrusted article pictures (and following redirects)
+- **Severity:** High
+- **Where:** `src/wallabag.cpp:214-257` (`add_pictures`), `src/http.cpp:98-102` (`HttpClient::request`)
+- **Details:**
+  - When `[wallabag] images = yes` (the default), `add_pictures()` fetches every `<img src>` / `data-src` / `srcset` and `preview_picture` URL found in untrusted web article HTML with `follow_redirects = true` (`CURLOPT_MAXREDIRS = 5`).
+  - Neither the initial URL nor redirect targets are restricted from hitting loopback (`127.0.0.0/8`, `::1`, `localhost`), link-local / cloud metadata (`169.254.0.0/16`, `fe80::/10`), or LAN/RFC1918 addresses.
+  - On a Steam Deck, local services listen on loopback (Steam client local services, Decky Loader, Syncthing, dev servers) and home routers/NAS admin endpoints sit on the LAN. A malicious saved web page containing `<img src="http://127.0.0.1:.../...">` (or redirecting there) causes DeckReader to issue GET requests to local/LAN services (and embed any image/SVG response into the EPUB).
+  - Also, if an `<img>` URL contains embedded credentials (`http://user:pass@host/img`), libcurl sends `Authorization: Basic ...`.
+- **Fix:**
+  - For picture requests (when the picture's host differs from the configured wallabag server host), reject loopback, link-local, and unspecified targets (ideally via `CURLOPT_OPENSOCKETFUNCTION` / resolved `sockaddr` check so DNS rebinding and redirects to `127.0.0.1` / `::1` / `169.254.x.x` are also blocked, while keeping `tests/fake-wallabag.py` working because its pictures share the server's `127.0.0.1` host).
+  - Reject or strip `user:pass@` userinfo from picture URLs in `resolve_url()`.
+
+### V3-SEC-2. Unvalidated `access_token` interpolated into `Authorization` HTTP header
+- **Severity:** Medium
+- **Where:** `src/wallabag.cpp:90-95` (`parse_token`), `src/wallabag.cpp:342`, `src/http.cpp:93-96`
+- **Details:**
+  - `parse_token()` returns the JSON `"access_token"` string verbatim without validating characters, and `run_sync()` builds `"Authorization: Bearer " + token`. If a compromised server or HTTP MITM returns CR/LF (`\r`, `\n`) or control characters in `access_token`, it is passed into `CURLOPT_HTTPHEADER`.
+- **Fix:**
+  - Reject tokens in `parse_token()` that are empty or contain any control character (`<= 0x1F` or `0x7F`) or whitespace.
+
+### V3-SEC-3. Tarpit / stalled picture hosts can hang a sync for up to 60 minutes per article
+- **Severity:** Medium
+- **Where:** `src/http.cpp:104-105`, `src/wallabag.cpp:233`
+- **Details:**
+  - `HttpClient::request()` sets `CURLOPT_CONNECTTIMEOUT = 20s` and `CURLOPT_TIMEOUT = req.timeout_s`, with **no** `CURLOPT_LOW_SPEED_LIMIT` / `CURLOPT_LOW_SPEED_TIME`.
+  - `add_pictures()` uses `timeout_s = 60` per picture (up to `MAX_PICTURES = 60`). A broken, hotlink-blocked, or hostile image host that accepts TCP and stalls (sending 0 bytes or 1 byte every few seconds) holds the sync thread for 60 full seconds per request (and across multiple stalled hosts in a 50-article sync, tens of minutes).
+- **Fix:**
+  - Set `CURLOPT_LOW_SPEED_LIMIT` (e.g. `1024` bytes/s) and `CURLOPT_LOW_SPEED_TIME` (e.g. `15` seconds), and use tighter timeouts for picture fetches (e.g. `connect_timeout = 10s`, `timeout_s = 25s`).
+
+### V3-SEC-4. Plaintext `http://` wallabag credentials and `config.ini` file permissions
+- **Severity:** Low
+- **Where:** `src/config.cpp:99-103`, `src/wallabag.cpp:302-323`, `docs/CONFIGURATION.md`
+- **Details:**
+  - `server = http://...` sends `client_id`, `client_secret`, `username`, `password`, and the bearer token in cleartext without logging a warning (legitimate for `127.0.0.1`/LAN self-hosted setups, risky if a user accidentally writes `http://app.wallabag.it`).
+  - While DeckReader creates `config.ini` with `0600` (`write_file_atomic`), editing it in external editors can leave it `0644` (world-readable) with the wallabag password and client secret inside.
+- **Fix:**
+  - Log a `LOG_W` warning when `[wallabag] server` uses `http://` on a non-loopback host (and warn if `config.ini` has group/other read bits set when `[wallabag]` is configured).
+
+### V3-SEC-5. `crengine-ng`'s `LVStreamFragment::Read` / `Seek` bypasses stored-entry size bounds (directly affects v0.3.0 article images)
+- **Severity:** Medium
+- **Where:** `.dev/src/crengine-ng/crengine/src/lvstream/lvstreamfragment.h:47-77`, `src/epubwrite.cpp:447`, `patches/crengine-ng-zip-hardening.patch`
+- **Details:**
+  - As noted in D31 (`docs/DECISIONS.md:622`), `LVStreamFragment::Read()` does not clamp `size` to `m_size - m_pos`, so any reader reading a stored (`method == 0`) ZIP entry until EOF reads past the end of the entry into subsequent ZIP entries / central directory.
+  - Additionally, `LVStreamFragment::Seek()` ignores `pos` for `LVSEEK_END` (`pos = m_start + m_size` instead of `pos += m_start + m_size`) and does not anchor `LVSEEK_CUR` to `m_pos + m_start` if the underlying archive stream moved.
+  - Because `crengine-ng-zip-hardening.patch` only capped deflated entries (`LVZipDecodeStream::read`) and v0.3.0 stores all raster article images uncompressed (`method == 0`), this leaves a gap in ZIP stream isolation for both article EPUBs and untrusted books.
+- **Fix:**
+  - Patch `lvstreamfragment.h` in `patches/crengine-ng-zip-hardening.patch` to clamp `Read()` to `m_size - m_pos` and fix `Seek()` for `LVSEEK_CUR` and `LVSEEK_END`, with a unit test reading a stored entry past its end.
+
+---
+
+## 2. Bugs — HTML/EPUB Builder (`src/epubwrite.cpp`) & Picture Fetching (`src/wallabag.cpp`)
+
+### V3-BUG-1. `from_srcset()` breaks modern CDN URLs containing commas (Substack, Cloudinary, Cloudflare, Imgix, Medium)
+- **Where:** `src/epubwrite.cpp:225-248` (`from_srcset`)
+- **Details:**
+  - `from_srcset()` splits on every comma (`split(srcset, ',')`).
+  - Most modern image CDNs (Substack `substackcdn.com/image/fetch/w_848,c_limit,f_auto/...`, Cloudflare `/cdn-cgi/image/width=800,format=auto/...`, Cloudinary, Imgix, Ghost, NYTimes) put **commas inside the image URL itself**. `split(srcset, ',')` shatters those URLs at the first comma, causing 404s and silently dropping all images from those sites.
+- **Fix:**
+  - Implement the HTML5 `srcset` candidate-splitting rule: skip leading whitespace/commas, scan the URL up to whitespace (stopping only on a trailing `,` at the end of a URL without a descriptor), then scan the optional descriptor (`...w` / `...x`) up to the next `,` or end of string. Add unit tests with Substack/Cloudinary/Cloudflare-style comma URLs.
+
+### V3-BUG-2. `picture_url()` checks `src` before lazy-load attributes (`data-src`, `data-original`, `data-lazy-src`)
+- **Where:** `src/epubwrite.cpp:250-268` (`picture_url`)
+- **Details:**
+  - The loop checks `{"src", "data-src", "data-original", "data-lazy-src", "data-url"}` in that order.
+  - Lazy-loading pages often put a real `https://.../placeholder.gif` or low-res blurred preview URL in `src` alongside the full-resolution URL in `data-src` / `data-lazy-src` / `data-original`. Because `src` resolves to a non-empty `http(s)` URL, `picture_url()` returns the placeholder and ignores `data-src` (the unit test only exercised `src="data:image/gif;base64,..."`, which `resolve_url` rejects).
+- **Fix:**
+  - Check `{"data-src", "data-original", "data-lazy-src", "data-url", "src"}` (and consider `data-srcset` / `srcset` before a placeholder `src`, or prefer `data-*` over `src`).
+
+### V3-BUG-3. One malformed image URL (e.g. unencoded space) blacklists the entire host in `dead_hosts`
+- **Where:** `src/wallabag.cpp:239-240`, `src/epubwrite.cpp:289-315` (`resolve_url`)
+- **Details:**
+  - `resolve_url()` does not percent-encode spaces (or other illegal URL chars) in relative/absolute image paths (e.g. `"my photo.jpg"`).
+  - When passed to `libcurl`, `curl_easy_perform()` fails with `CURLE_URL_MALFORMAT`, setting `res.error` with `res.too_large == false`.
+  - In `add_pictures()` (`src/wallabag.cpp:239-240`), `if (!res.error.empty() && !res.too_large) dead_hosts.insert(host);` immediately **blacklists that host for the rest of the article**, dropping every subsequent valid image on the same site!
+  - Same issue if a single slow/huge image hits `CURLE_OPERATION_TIMEDOUT`: all remaining valid images from that host are skipped.
+- **Fix:**
+  - Only add a host to `dead_hosts` on transport-level host failures (DNS failure, connection refused/reset, TLS failure — expose a `bool host_unreachable` flag on `HttpResponse`), never on `CURLE_URL_MALFORMAT` or per-request read errors.
+  - Percent-encode spaces (and reject control characters) in `resolve_url()`.
+
+### V3-BUG-4. `resolve_url()` mishandles query-only bases, query-only refs, and `../` path segments
+- **Where:** `src/epubwrite.cpp:289-315`
+- **Details:**
+  1. If `base` has no `/` after the host before `?` (e.g. `https://example.com?p=123`), `b.find('/', sep + 3)` returns `npos`, so `origin` includes `?p=123`, producing `https://example.com?p=123/img.png`.
+  2. If `ref` starts with `?` (`?format=png`), line 313 strips the base filename (`path.rfind('/') + 1`) instead of keeping the base path before `?`.
+  3. Relative `../` and `./` segments are not normalized, so `https://example.com/a/b/../img.png` and `https://example.com/a/img.png` fail to deduplicate in `article_images()` and are downloaded twice.
+- **Fix:**
+  - Find `path_at` with `b.find_first_of("/?", sep + 3)`, handle `r[0] == '?'`, and collapse `.` / `..` path segments.
+
+### V3-BUG-5. `read_tag()`, `each_picture_tag()`, and `decode_entities()` edge cases corrupt image tags and `alt` text
+- **Where:** `src/epubwrite.cpp:125-222, 271-285`
+- **Details:**
+  1. **Unquoted self-closing attribute (`src/epubwrite.cpp:213`):** `<img src=/img/a.png/>` stops only at whitespace or `>`, so `src` is parsed as `"/img/a.png/"` (404).
+  2. **HTML comments (`src/epubwrite.cpp:271-285`):** `each_picture_tag()` does not skip `<!-- ... -->`, so commented-out `<img src="...">` tags are downloaded and rewritten inside the comment (and `--` inside `alt` produces invalid XML).
+  3. **Double-escaped non-ASCII entities & XML control chars (`src/epubwrite.cpp:150-156, 344`):** `decode_entities()` only decodes numeric/named entities in `1..127` and leaves `&#8212;`, `&mdash;`, `&eacute;`, etc. untouched; `rewrite_images()` then runs `xml_escape()` on `alt`, double-escaping them into `&amp;#8212;` / `&amp;mdash;`. Meanwhile `strtol` ignores trailing garbage (`&#12abc;`), and `code > 0 && code < 128` decodes illegal XML 1.0 control characters (`0x01`–`0x08`, `0x0B`, `0x0C`, `0x0E`–`0x1F`) into attributes.
+- **Fix:**
+  - In `read_tag()`, stop unquoted values on `/` when followed by `>`.
+  - In `each_picture_tag()`, skip `<!-- ... -->` comments.
+  - In `decode_entities()`, validate full numeric entity strings with `endptr`, encode valid Unicode code points `>= 128` to UTF-8, and reject illegal XML 1.0 control characters.
+
+### V3-BUG-6. `make_article_epub()` embeds raw wallabag HTML and unstripped XML control characters into XHTML
+- **Where:** `src/epubwrite.cpp:108-120, 378-427`
+- **Details:**
+  - `xml_escape()` does not strip NUL bytes (`\0`, possible via JSON `\u0000`) or illegal XML 1.0 control characters (`< 0x20` other than `\t`, `\n`, `\r`), which can truncate or break XML parsing in `content.opf` and `article.xhtml`.
+  - `b.html` is concatenated directly into `<div class="article">...</div>` of an `application/xhtml+xml` document. Untrusted `<style>` tags in wallabag HTML are applied by `crengine-ng` when *"Book's own styles"* is On (e.g. `display: none` or broken layout), and stray `</div></body></html>` or NUL bytes in `b.html` can break out of `<div class="article">` or drop the `<p class="source">` footer.
+- **Fix:**
+  - Strip NUL and illegal XML 1.0 control characters in `xml_escape()` and from `b.html`, and strip `<script>...</script>` / `<style>...</style>` blocks from `b.html` (or disable embedded styles/strip dangerous tags) before writing `article.xhtml`.
+
+### V3-BUG-7. `preview_picture` (cover) is dropped on articles with `>= 60` images; SVG sniffing false positives
+- **Where:** `src/wallabag.cpp:216-224`, `src/epubwrite.cpp:365-373`
+- **Details:**
+  1. `add_pictures()` appends `preview` at the end of `urls`, then loops `i < MAX_PICTURES` (60). Any article with 60+ images never downloads `preview`, leaving it with no cover thumbnail in the library. (Also, skipped images beyond 60 aren't added to `*left_out`.)
+  2. `image_type()` classifies any response starting with `<` that contains `<svg` and not `<html` within the first 2048 bytes as `image/svg+xml`. An HTML error fragment without `<html` (e.g. `<!doctype html><div><svg>...`) or an XML error page mentioning `<svg` matches falsely.
+- **Fix:**
+  - Download/insert `preview` at index `0` (or reserve a slot for it) so the cover is always fetched first.
+  - In `image_type()`, verify `<svg` is followed by whitespace/`>`/`/` and reject `<!doctype html` / `<head` / `<body`.
+
+---
+
+## 3. Bugs — Sync Logic, State & UI (`src/wallabag.cpp`, `src/articles.cpp`, `src/library_screen.cpp`, `src/reader_screen.cpp`, `src/config.cpp`)
+
+### V3-BUG-8. No pagination on `/api/entries.json` — server `perPage` caps cause accidental article deletion
+- **Where:** `src/wallabag.cpp:388-405`
+- **Details:**
+  - `run_sync()` requests `page=1&perPage=<max_articles>` (where `max_articles` can be up to `500`) in a single call and never inspects `pages` / `limit` in the JSON response.
+  - If a wallabag server or proxy caps `perPage` below `s.max_articles` (returning `pages > 1`), `unread` contains only page 1; `plan_sync()` then places every valid unread local article from page 2+ into `r.remove`, **deleting them and wiping their reading positions and bookmarks** on the Deck!
+  - Large single-page `perPage=500` requests can also hit PHP memory/timeout limits on small self-hosted servers.
+- **Fix:**
+  - Paginate `GET /api/entries.json` with a reasonable page size (e.g. `perPage = std::min(s.max_articles, 50)`) until `unread.size() >= s.max_articles` or `page >= total_pages`, stopping cleanly if a page returns 0 items.
+
+### V3-BUG-9. `Articles::on_wake()` deletes `r.remove` and bumps `wallabag_updated` even on cancelled or failed-mid-download syncs
+- **Where:** `src/articles.cpp:143-160`, `src/wallabag.cpp:401-415`
+- **Details:**
+  - `if (r.listed)` runs **before** `if (r.cancelled) return;` and without checking `r.error.empty()`.
+  - If Wi-Fi drops halfway through downloading new articles (`r.listed == true`, `r.error != ""`), `app_.state.wallabag_updated` is still set to `wall_time()` (making the About/Articles row report it was updated just now even though the update failed). And if a cancel UI is wired up to `Articles::cancel()`, a cancelled sync after listing would still unlink `r.remove` and update `wallabag_updated`.
+- **Fix:**
+  - Handle `if (r.cancelled) return;` (after applying `r.archived` and recounting) before `if (r.listed)`, and only update `wallabag_updated` when `r.error.empty()` (still removing `r.remove` only when `r.listed && !r.cancelled`).
+
+### V3-BUG-10. `parse_iso8601()` accepts negative hours/minutes/seconds, out-of-range timezone offsets, and rejects lowercase `'z'`
+- **Where:** `src/wallabag.cpp:50-88`
+- **Details:**
+  - `std::sscanf(..., "%4d-%2d-%2dT%2d:%2d:%2d%n", ...)` accepts negative integers for `%2d` (e.g. `"-1"`), and line 54 checks `h > 23 || mi > 59 || sec > 60` without checking `h < 0 || mi < 0 || sec < 0`.
+  - Timezone offset hours/minutes on line 74 are not checked against `0..23` / `0..59`.
+  - Line 65 checks `rest == "Z"` and rejects valid lowercase `"z"`.
+- **Fix:**
+  - Check `h < 0 || mi < 0 || sec < 0`, validate timezone offset `oh <= 23 && om <= 59`, accept `"z"`, and verify `timegm(&tm) != static_cast<time_t>(-1)`.
+
+### V3-BUG-11. `parse_config()` accepts `[wallabag] server = https://` (empty host) as configured
+- **Where:** `src/config.cpp:99-103`
+- **Details:**
+  - `parse_config()` only checks `starts_with(to_lower(value), "https://") || starts_with(..., "http://")`, unlike `wallabag_base()` (`src/wallabag.cpp:38-48`) which also checks `!url_host(s).empty()`. Setting `server = https://` passes config parsing without warning, shows the Articles shelf, and only errors when updating.
+- **Fix:**
+  - Use `wallabag_base(value)` (or check non-empty host) in `parse_config()`.
+
+### V3-BUG-12. `when_text()` formats 24h hours without leading zero (`9:05` vs `09:05`)
+- **Where:** `src/articles.cpp:25` vs `src/system.cpp:46`
+- **Details:**
+  - `when_text()` uses `strf("%d:%02d", a.tm_hour, a.tm_min)` in 24-hour mode (`9:05`), inconsistent with `clock_text()` in `src/system.cpp:46` (`%02d:%02d` -> `09:05`).
+
+### V3-BUG-13. UI polish gaps in `Articles` folder & Library menu while syncing
+- **Where:** `src/library_screen.cpp:216-222, 449-450, 459-465`, `src/articles.h:39`
+- **Details:**
+  1. Line 450 draws the right-aligned sync status (`under`) under the article count with **no `max_w`**, so long hostnames or `"Marking as read in wallabag… 12 of 50"` can overlap `"Articles"` on the left at higher `ui_scale`.
+  2. When entering an empty `Articles` folder while an update is already running (`app_.articles->busy()`), line 462–464 still tells the user `"No articles yet. Choose Update articles in the menu..."` instead of showing the live progress.
+  3. `Articles::cancel()` exists in `src/articles.h:39`, but there is no way for the user to cancel a stalled/slow sync from the UI (clicking *"Update articles"* while busy just toasts `"Already updating the articles"`). Offering *"Cancel article update"* in the menu while `busy()` is true lets users abort slow updates without quitting the app.
+
+---
+
+## 4. Performance, Cache & Memory Optimizations
+
+### V3-OPT-1. Concurrent picture downloads via `curl_multi` (5–10× faster syncs)
+- **Where:** `src/http.h`, `src/http.cpp`, `src/wallabag.cpp:214-257`
+- **Details:**
+  - As measured in D31 (`docs/DECISIONS.md:564-566`), downloading 9 articles / 97 pictures sequentially on one easy handle took ~45 s (33 s for 20 SVGs on one slow site). With `max_articles = 50`, an initial sync can take several minutes.
+  - Using `curl_multi` inside the same single `SyncWorker` thread (e.g. 4–6 concurrent picture transfers per article, preserving connection reuse & HTTP/2 multiplexing and zero extra threads) cuts multi-image article sync times dramatically.
+
+### V3-OPT-2. Peak RAM spike (~120+ MB) when building image-heavy article EPUBs
+- **Where:** `src/wallabag.cpp:422-436`, `src/epubwrite.cpp:46-104`
+- **Details:**
+  - With `MAX_PICTURES_TOTAL = 60 MB`, `book.images` holds up to 60 MB in RAM, and `zip_build()` constructs a second complete ~60 MB `std::string` in memory before `write_file_atomic()` writes it — a **120+ MB temporary spike** on top of the app's ~88 MB footprint (requirements §1 target: `< 100 MB`).
+  - Also, `deflate_raw()` (`src/epubwrite.cpp:31`) uses `Z_BEST_COMPRESSION` (level 9) instead of `Z_DEFAULT_COMPRESSION` (level 6), spending extra CPU on large HTML/SVGs for ~1–2% savings; and `zip_build()`, `xml_escape()`, `decode_entities()`, `rewrite_images()` don't `reserve()` output buffers.
+- **Fix:**
+  - Stream ZIP entries directly to the atomic temp file fd (or release each `ArticleImage::data` as it is appended/written) and consider lowering `MAX_PICTURES_TOTAL` (e.g. 25–32 MB). Use `Z_DEFAULT_COMPRESSION` and `reserve()` string capacities.
+
+### V3-OPT-3. Prune `MetaCache` & cover thumbnails when articles are removed
+- **Where:** `src/articles.cpp:113-115, 149-151`, `src/metacache.h`
+- **Details:**
+  - `Articles::mark_read()` and `Articles::on_wake()` unlink `<id>.epub` and call `app_.state.forget(path)`, but never remove the article from `app_.meta` (`metadata.json` + `$XDG_CACHE_HOME/deckreader/covers/<hash>.png`). Unlike local books, wallabag articles churn continuously, so orphaned cover PNGs and metadata entries accumulate indefinitely.
+- **Fix:**
+  - Add `MetaCache::forget(const std::string& path)` (erasing from `meta_`, `covers_`, `scaled_`, unlinking `cover_file(path)`, and marking dirty) and call it alongside `state.forget(path)` in `Articles::mark_read()` and `Articles::on_wake()`.
+
+### V3-OPT-4. Avoid redundant library refreshes during download progress and double save/cache write on *"Mark as read"*
+- **Where:** `src/articles.cpp:131-134`, `src/app.cpp:116-120`, `src/reader_screen.cpp:453-460`
+- **Details:**
+  1. On every downloaded article (`p.done > shown_done_`), `Articles::on_wake()` calls `app_.refresh_library()`, which calls `library_->refresh()` even when the user is on the **Root screen** or inside **`~/Books`** — causing up to 50 redundant directory scans, `/proc/self/mountinfo` reads, and `meta_cursor_` resets while browsing non-Article folders. Only refresh the library list on download progress when viewing the `Articles` folder (and on completion when viewing `Articles` or `Root`).
+  2. In `ReaderScreen::open_settings()` (`src/reader_screen.cpp:453-460`), *"Mark as read in wallabag"* calls `app_.show_library()` (which runs `Book::close()` -> `view_->updateCache()` writing a fresh crengine layout cache file, calls `state.save()`, and refreshes the library) and immediately calls `app_.articles->mark_read(path)` (which deletes the `.epub`, removes it from `state`, marks `state` dirty again, and refreshes the library a second time). Skipping `updateCache()` when closing an article to mark it read, and forgetting it before saving/refreshing, avoids wasted disk I/O and double work.
+
+---
+
+## 5. Missing Regression Tests
+
+### V3-TEST-1. Suggested unit tests for `tests/unit_tests.cpp`
+- `from_srcset` with commas inside CDN URLs (`V3-BUG-1`).
+- `picture_url` preferring `data-src` / `data-lazy-src` over an `https://` placeholder `src` (`V3-BUG-2`).
+- `read_tag` with unquoted self-closing `<img src=/a.png/>`, `each_picture_tag` skipping `<!-- <img ...> -->`, and `decode_entities` with `&#8212;` / `&mdash;` / invalid control chars (`V3-BUG-5`).
+- `resolve_url` with `https://example.com?q=1`, `?w=800`, `../img.png`, and spaces (`V3-BUG-3`, `V3-BUG-4`).
+- `parse_iso8601` rejecting negative hour/min/sec (`2026-11-19T-1:00:00Z`) and accepting lowercase `z` (`V3-BUG-10`).
+- `parse_token` rejecting tokens with `\r`/`\n` (`V3-SEC-2`), and `parse_config` rejecting `server = https://` (`V3-BUG-11`).
+- Multi-page `/api/entries.json` pagination in `tests/fake-wallabag.py` (`V3-BUG-8`).
+- `LVStreamFragment::Read` stopping at the end of a stored ZIP entry (`V3-SEC-5`).
+
+---
+
 # DeckReader v0.1.0 Audit — Issues & Optimizations
 
 > **Reviewed 2026-11-17.** Outcome of every item (fixed, or declined with

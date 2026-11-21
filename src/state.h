@@ -49,10 +49,18 @@ public:
 
     BookState* find(const std::string& book);
     BookState& at(const std::string& book);
+    // Its position, bookmarks and place in the recent list (a removed article).
+    void forget(const std::string& book);
     // Books opened before, most recent first (not the hidden ones).
     std::vector<std::string> recent(size_t max) const;
 
     ReaderSettings settings;
+
+    // wallabag (D31): articles marked as read on the Deck that wallabag
+    // hasn't been told about yet, and when the articles were last updated
+    // (seconds since the epoch, 0 = never).
+    std::vector<int64_t> wallabag_archive;
+    int64_t wallabag_updated = 0;
 
     // Saving is rate-limited: the first change after a quiet period is
     // written at once, further ones at most every SAVE_INTERVAL_MS, so

@@ -27,7 +27,8 @@
       <li>Reading position saved on every page turn, safe against sleep and power loss</li>
       <li>Library from ~/Books, the microSD card and USB drives, with covers and recently read books</li>
       <li>Status overlay with chapter, pages, battery and clock, and an optional progress line</li>
-      <li>Works offline: no network access, no account</li>
+      <li>Web articles saved with wallabag, with their pictures, read like books</li>
+      <li>Works offline; the network is used only for wallabag, when you ask. No account, no tracking</li>
     </ul>
   </description>
   <screenshots>
@@ -74,6 +75,9 @@
   <url type="donation">https://ko-fi.com/nicocarbone</url>
   <releases>
     <!-- Set the date when tagging the release (docs/DEVELOPMENT.md §6). -->
+    <release version="0.3.0" date="2026-11-20">
+      <description><p>Web articles from wallabag (wallabag.it or your own server): unread articles download with their pictures into an Articles shelf, and can be marked as read in wallabag from the Deck. Folders can be sorted by newest.</p></description>
+    </release>
     <release version="0.2.0" date="2026-11-18">
       <description><p>The screen stays awake while a book is being read (until 10 minutes without input), and a complete About screen, also in the reading menu.</p></description>
     </release>

@@ -30,7 +30,10 @@ installed like `/app` into `.dev/app`. `BUILD_TYPE=Debug` for a debug build;
 `--clean` rebuilds the app from scratch.
 
 Development runs use `.dev/run/{config,data,cache}`: your real settings and
-reading positions are never touched.
+reading positions are never touched. They have the network, as the Flatpak
+does (`NET=1` in `scripts/sdk-run.sh`; builds and tests don't). To try the
+wallabag articles with a real account, fill in the `[wallabag]` section of
+`.dev/run/config/config.ini` (D31; `.dev/` is never committed).
 
 Keyboard (same as DeckVideoPlayer): arrows, Enter = A, Backspace/Esc = B,
 `x`, `y`, `m`/Tab = Menu, `i`/`v` = View, PgUp/PgDn = L1/R1, Home/End =
@@ -45,7 +48,15 @@ W=3840 H=2160 tools/headless-run.sh -- "..."        # TV size
 BACKEND=gamescope tools/headless-run.sh -- "..."    # headless gamescope (X11 + OpenGL)
 MODE=flatpak tools/headless-run.sh -- "..."         # the installed Flatpak
 KEEP=1 tools/headless-run.sh -- "..."               # keep reading state from the last run
+EXTRA_CONFIG=.dev/wallabag.ini tools/headless-run.sh -- "idle; key:down; key:y; wait:5000; idle; shot:/tmp/a.png; quit"
 ```
+
+`EXTRA_CONFIG` appends a file to the run's `config.ini`, e.g. a
+`[wallabag]` section pointing at a real account or at
+`tests/fake-wallabag.py` started on the host (`python3
+tests/fake-wallabag.py` prints its port; `POST /test/reset` sets the
+articles, `"delay": 1.5` slows downloads to see the progress). Keep files
+with real credentials in `.dev/`.
 
 Script commands are documented in `src/testscript.h` (`key:`, `stick:`,
 `tap:`, `wait:`, `idle`, `shot:`, `quit`); one runs per frame. The run uses
@@ -78,6 +89,14 @@ published (copyrighted books).
   real books.
 - `tests/make-hostile-epubs.py`: writes the malformed archives and the
   small rendering books into `.dev/test-hostile` first.
+- The wallabag sync (D31) against `tests/fake-wallabag.py`, which the
+  unit tests start inside the SDK sandbox (its own loopback; no network):
+  downloads, failed articles, removals, archiving, login errors, a moved
+  server, no server, cancelling, the background thread, a server that
+  limits pages, and the pictures (redirects, missing ones, a format the
+  engine can't show, never sent the token, none from this device unless
+  it is the wallabag server, a bad address, more than 60, a stalling
+  site).
 - `tests/test_steam_shortcut.py` against a fake `HOME`.
 - Consistency checks: the version in `CMakeLists.txt` has a metainfo
   `<release>` and a `CHANGELOG.md` section; manifest patches exist.
@@ -172,6 +191,12 @@ not yet done as a whole.
     awake* says "screensaver accepted". With `keep_awake_minutes = 1` in
     `config.ini`, the screen dims about a minute after the last press. In
     the library it dims as usual.
+12. wallabag (D31): with `[wallabag]` filled in, Y on Articles downloads
+    the unread articles (pictures included) over Wi-Fi; one marked as read
+    disappears and is archived in wallabag; with Wi-Fi off, marking one
+    as read says it will be sent with the next update, and the next update
+    with Wi-Fi on archives it. An article read on the phone disappears at
+    the next update.
 
 ## 8. Gotchas
 

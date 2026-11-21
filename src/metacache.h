@@ -38,6 +38,9 @@ public:
     const BookMeta* fetch(const std::string& path);
     // The cover scaled to height_px (scaled copies are kept in memory).
     const Image* cover(const std::string& path, int height_px);
+    // A book that is gone for good (an article removed): its entry and
+    // cover thumbnail are deleted.
+    void forget(const std::string& path);
 
 private:
     std::string cover_file(const std::string& path) const;

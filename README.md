@@ -10,8 +10,9 @@ themes for the Steam Deck OLED. Your place is saved on every page turn.
 It is a free, open-source and lightweight app built on the
 [crengine-ng](https://gitlab.com/coolreader-ng/crengine-ng) book engine
 (the continuation of CoolReader's engine) and SDL3. It installs as a Flatpak with a Steam
-shortcut (a *Non-Steam game* with library artwork), and works fully
-offline. It is the companion of
+shortcut (a *Non-Steam game* with library artwork), and works offline:
+the network is used only to download your web articles from
+[wallabag](https://wallabag.org), if you connect it. It is the companion of
 [Deck Video Player](https://github.com/nicocarbone/DeckVideoPlayer): same
 look, same buttons, same installer.
 
@@ -39,8 +40,12 @@ look, same buttons, same installer.
   Hyperlegible (for low vision), or the book's own fonts.
 - **Library** from `~/Books` and any other folder, microSD cards and USB
   drives: covers, titles and authors, reading progress, sorting by title,
-  author or last read, and your **recently read** books on the start
-  screen, so A resumes the last one.
+  author, last read or newest, and your **recently read** books on the
+  start screen, so A resumes the last one.
+- **Web articles from wallabag**: save articles on your phone with
+  wallabag (the hosted wallabag.it or your own server) and read them on
+  the Deck, pictures included, from an **Articles** shelf. Mark one as
+  read and it's archived in wallabag too.
 - **Contents, bookmarks, chapter jumps** with the D-pad, and a
   **left-stick scrub** through the whole book with a live preview.
 - **Status overlay** with chapter, pages, percentage, battery and clock
@@ -56,7 +61,9 @@ look, same buttons, same installer.
 - **Easy on the battery**: nothing runs while you read, and the next
   pages are ready before you turn.
 - **Scales to 4K TVs** for a docked Deck or a Steam Machine.
-- **Private**: no network access at all, no account, no tracking.
+- **Private**: no account, no tracking. The network is used only for
+  wallabag, when you update your articles (and their pictures) or mark one
+  as read.
 
 ## Screenshots
 
@@ -147,12 +154,12 @@ and reading positions are kept).
 | **A** | Open / read | Show or hide the status overlay |
 | **B** | Back (quit at the start screen) | Hide the overlay, else back to the library |
 | **X** | Read from the beginning | Bookmark this page (again to remove) |
-| **Y** | Sort by title, author or last read | Next theme |
+| **Y** | Sort by title, author, last read or newest; on Articles: update them | Next theme |
 | **D-pad ← →**, **L1 / R1** | Page through the list | Previous / next page |
 | **D-pad ↑ ↓** | Move | Previous / next chapter |
 | **L2 / R2** | First / last item | Previous / next chapter |
 | **View** | Book info | Contents |
-| **Menu** | Library menu (refresh, remove from recently read, about, quit) | Reading settings, bookmarks, about |
+| **Menu** | Library menu (update articles, mark as read in wallabag, refresh, remove from recently read, about, quit) | Reading settings, bookmarks, mark as read in wallabag, about |
 | **Left stick** | Move | Hold left or right to scrub through the book |
 | **Touchscreen** | Tap a row | Tap the edges or swipe: page; tap the middle: overlay |
 
@@ -167,9 +174,9 @@ font size, line and paragraph spacing, side and top/bottom margins,
 alignment, one or two pages, hyphenation, the book's own styles and text
 rendering. They apply to every book and are kept between sessions.
 
-Book folders and a few other options (the recently read list, the clock
-format, interface size, accent colour, tap zones, keeping the screen
-awake) are in
+Book folders, your wallabag account and a few other options (the
+recently read list, the clock format, interface size, accent colour, tap
+zones, keeping the screen awake) are in
 `~/.config/deckreader/config.ini`, created on the first start; see
 [docs/CONFIGURATION.md](docs/CONFIGURATION.md). The Flatpak can read
 `~/Books`, Documents, Downloads, `/mnt` and removable drives; for another
@@ -187,8 +194,10 @@ Steam (Game Mode) ─ launches ─▶ flatpak run io.github.nicocarbone.DeckRead
                                    ├─ crengine-ng: EPUB → pages (hyphenation, CSS, fonts)
                                    ├─ SDL3: window, GPU textures, gamepad, touch
                                    ├─ FreeType + HarfBuzz: the interface's text
-                                   └─ while reading: a small helper asks Steam
-                                      not to dim the screen (D-Bus)
+                                   ├─ while reading: a small helper asks Steam
+                                   │  not to dim the screen (D-Bus)
+                                   └─ when you update articles: a background
+                                      thread downloads them from wallabag (HTTPS)
                                    ▼
                               gamescope ─▶ Steam Deck screen / TV
 ```
@@ -239,8 +248,9 @@ Details in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 Next: footnotes in a popup, fallback fonts for Chinese, Japanese, Korean,
 Arabic and Hebrew, and the other formats the engine already reads (FB2,
-MOBI without DRM, TXT). Then OPDS catalogues (Calibre-web, Kavita, Komga)
-to download books from your own server. See
+MOBI without DRM, TXT). Then newsletters and blogs by feed (Substack,
+Ghost, any RSS or Atom feed), and OPDS catalogues (Calibre-web, Kavita,
+Komga) to download books from your own server. See
 [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Questions
@@ -263,6 +273,13 @@ to download books from your own server. See
   position is saved on every page turn (at most every two seconds while
   you flip through pages), when the Steam overlay opens and when the app
   closes.
+- **Can I read web articles?** Yes, with [wallabag](https://wallabag.org),
+  a read-it-later service: use the hosted
+  [wallabag.it](https://wallabag.it) (paid, with a free trial) or run it
+  on your own server. Save articles from your phone's share menu or a browser
+  add-on, add your account to the `[wallabag]` section of `config.ini`
+  ([docs/CONFIGURATION.md](docs/CONFIGURATION.md)), then press Y on
+  **Articles**. They stay readable offline.
 - **Does the screen dim while I read?** No. While a book is open,
   DeckReader asks SteamOS not to dim the screen or sleep, until 10 minutes
   pass without a button press (`keep_awake_minutes` in `config.ini`). In

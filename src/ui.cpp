@@ -181,6 +181,19 @@ void Ui::icon_usb(float x, float cy, float s, Color c) {
     rect(x0, top + plug, w, s - plug, c, s * 0.1f);
 }
 
+void Ui::icon_articles(float x, float cy, float s, Color c) {
+    // A news page: headline, a picture and lines of text cut out of it.
+    float w = s * 0.86f, h = s * 0.92f, x0 = x + (s - w) / 2, y = cy - h / 2;
+    Color cut = col(theme.bg, 0.6f);
+    rect(x0, y, w, h, c, s * 0.08f);
+    float in = w * 0.14f, iw = w - 2 * in, lh = h * 0.07f;
+    rect(x0 + in, y + h * 0.14f, iw, h * 0.12f, cut, lh / 2);
+    rect(x0 + in, y + h * 0.36f, iw * 0.42f, h * 0.3f, cut, s * 0.03f);
+    for (int i = 0; i < 3; i++)
+        rect(x0 + in + iw * 0.54f, y + h * (0.36f + i * 0.115f), iw * 0.46f, lh, cut, lh / 2);
+    rect(x0 + in, y + h * 0.76f, iw, lh, cut, lh / 2);
+}
+
 void Ui::icon_check(float cx, float cy, float r) {
     circle(cx, cy, r, col(theme.good));
     float t = r * 0.26f;

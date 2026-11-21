@@ -13,6 +13,7 @@ const char* sort_label(SortMode m) {
     case SortMode::Name: return "Sorted by title";
     case SortMode::Author: return "Sorted by author";
     case SortMode::Recent: return "Sorted by last read";
+    case SortMode::Newest: return "Sorted by newest";
     }
     return "";
 }
@@ -28,7 +29,7 @@ static std::string tilde(const std::string& path, const std::string& home) {
 }
 
 std::vector<LibEntry> list_root(const Config& cfg, StateStore& state, const std::string& mountinfo_text,
-                                const std::string& home) {
+                                const std::string& home, const std::string& articles_dir) {
     std::vector<LibEntry> out;
     for (const std::string& folder : cfg.folders) {
         LibEntry e;
@@ -40,6 +41,16 @@ std::vector<LibEntry> list_root(const Config& cfg, StateStore& state, const std:
         e.detail = e.missing ? "Not found: " + tilde(folder, home) : tilde(folder, home);
         e.tag = "Local";
         out.push_back(e);
+    }
+    if (!articles_dir.empty()) {
+        LibEntry e;
+        e.kind = LibEntry::Source;
+        e.path = articles_dir;
+        e.name = "Articles";
+        e.icon = LibEntry::IconArticles;
+        e.articles = true;
+        e.tag = "Article";
+        out.push_back(e); // its second line is the sync status (library_screen.cpp)
     }
     if (cfg.removable_media) {
         std::vector<Mount> mounts = removable_mounts(mountinfo_text);
@@ -141,7 +152,7 @@ void sort_entries(std::vector<LibEntry>& entries, SortMode mode, MetaCache& meta
         std::string title = e.kind == LibEntry::Book ? display_title(e, m) : e.name;
         std::string author = m ? m->author : std::string();
         const BookState* b = e.kind == LibEntry::Book ? state.find(e.path) : nullptr;
-        k.t = b ? b->last_read : 0;
+        k.t = mode == SortMode::Newest ? e.mtime : b ? b->last_read : 0;
         if (mode == SortMode::Author && k.group == 1) {
             k.a = author.empty() ? "\x7f" : author; // unknown authors last
             k.b = title;
@@ -155,7 +166,7 @@ void sort_entries(std::vector<LibEntry>& entries, SortMode mode, MetaCache& meta
         const Key& b = y.first;
         if (a.group != b.group)
             return a.group < b.group;
-        if (mode == SortMode::Recent && a.t != b.t)
+        if ((mode == SortMode::Recent || mode == SortMode::Newest) && a.t != b.t)
             return a.t > b.t;
         if (a.a != b.a)
             return natural_less(a.a, b.a);

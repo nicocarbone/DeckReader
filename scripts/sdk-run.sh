@@ -6,6 +6,11 @@
 #
 #   scripts/sdk-run.sh <command> [args...]       build tools, tests
 #   GUI=1 scripts/sdk-run.sh <command> [args...] also display, GPU, input
+#   NET=1 scripts/sdk-run.sh <command> [args...] also the network, as the
+#                                  Flatpak has it (wallabag, D31)
+#
+# Without NET=1 the sandbox has only its own loopback: the unit tests' fake
+# wallabag server works, nothing else does.
 #
 # Extra flatpak-run options can be passed in SDK_RUN_ARGS.
 
@@ -28,6 +33,9 @@ shift
 opts="--filesystem=$root --cwd=$PWD"
 if [ "${GUI:-0}" = 1 ]; then
     opts="$opts --socket=x11 --socket=wayland --share=ipc --device=all --filesystem=/run/media"
+fi
+if [ "${NET:-0}" = 1 ]; then
+    opts="$opts --share=network"
 fi
 # Word splitting of $opts is intended; $root/$PWD may contain non-ASCII but
 # no spaces (checked here).

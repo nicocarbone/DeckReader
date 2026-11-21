@@ -132,6 +132,9 @@ std::unique_ptr<Menu> make_about_menu(App& app) {
     m->items.push_back({"Keep awake", [&app] { return app.keep_awake.status(); }});
     for (const std::string& folder : app.cfg.folders)
         row("Book folder", short_path(folder, home));
+    row("Articles (wallabag)", app.articles->about());
+    if (app.articles->configured())
+        row("Articles folder", short_path(app.articles->dir(), home));
     row("Settings", short_path(path_join(app.paths.config_dir, "config.ini"), home));
     row("Reading data", short_path(app.paths.data_dir, home));
     row("Cache", short_path(app.paths.cache_dir, home));
@@ -139,7 +142,7 @@ std::unique_ptr<Menu> make_about_menu(App& app) {
     header("Credits");
     row("Book engine", "crengine-ng (GPL-2.0-or-later)");
     row("Built on", "SDL3, FreeType, HarfBuzz, FriBiDi");
-    row("Also", "libunibreak, utf8proc, nlohmann/json");
+    row("Also", "libunibreak, utf8proc, nlohmann/json, libcurl");
     row("Fonts", "Literata, Inter, Atkinson Hyperlegible (OFL)");
     row("Hyphenation", "TeX patterns, via crengine-ng");
     row("Companion app", "DeckVideoPlayer");

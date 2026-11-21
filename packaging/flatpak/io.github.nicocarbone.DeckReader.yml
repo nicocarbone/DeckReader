@@ -27,6 +27,9 @@ finish-args:
   # App settings live in ~/.config/deckreader so they are easy to edit
   # (same as DeckVideoPlayer).
   - --filesystem=xdg-config/deckreader:create
+  # wallabag articles (D31): used only when the user updates them or marks
+  # one as read, never in the background, and only if [wallabag] is set.
+  - --share=network
   # Keep the screen awake while reading (D28): SteamOS game mode honours
   # this service's inhibitions (the portal, always allowed, serves desktops).
   - --talk-name=org.freedesktop.ScreenSaver
@@ -100,6 +103,9 @@ modules:
       # Line art stays visible on dark pages (D26).
       - type: patch
         path: ../../patches/crengine-ng-image-plate.patch
+      # Reads of a stored ZIP entry stop at its end (D32).
+      - type: patch
+        path: ../../patches/crengine-ng-stream-fragment.patch
 
   # Bundled fonts (all SIL Open Font License 1.1, D9).
   - name: fonts

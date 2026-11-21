@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <unistd.h>
 
 #include "nlohmann/json.hpp"
 
@@ -99,6 +100,19 @@ const BookMeta* MetaCache::fetch(const std::string& path) {
     meta_[path] = m;
     dirty_ = true;
     return &meta_[path];
+}
+
+void MetaCache::forget(const std::string& path) {
+    auto it = meta_.find(path);
+    if (it != meta_.end()) {
+        if (it->second.has_cover)
+            ::unlink(cover_file(path).c_str());
+        meta_.erase(it);
+        dirty_ = true;
+    }
+    covers_.erase(path);
+    for (auto s = scaled_.begin(); s != scaled_.end();)
+        s = starts_with(s->first, path + "@") ? scaled_.erase(s) : std::next(s);
 }
 
 void MetaCache::evict(std::map<std::string, Cached>& cache, size_t keep) {

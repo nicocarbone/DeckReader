@@ -19,12 +19,13 @@ void logf(LogLevel level, const char* fmt, ...) {
     if (level > g_level)
         return;
     static const char* names[] = {"error", "warn", "info", "debug"};
-    std::fprintf(stderr, "[deckreader] %s: ", names[static_cast<int>(level)]);
+    // One write per line: the articles thread logs too (D31).
+    char msg[2048];
     va_list ap;
     va_start(ap, fmt);
-    std::vfprintf(stderr, fmt, ap);
+    std::vsnprintf(msg, sizeof msg, fmt, ap);
     va_end(ap);
-    std::fputc('\n', stderr);
+    std::fprintf(stderr, "[deckreader] %s: %s\n", names[static_cast<int>(level)], msg);
 }
 
 } // namespace dr

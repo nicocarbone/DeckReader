@@ -84,6 +84,8 @@ std::string StateStore::to_json() const {
         books[path] = e;
     }
     json root = {{"version", 1}, {"settings", settings_to_json(settings)}, {"books", books}};
+    if (!wallabag_archive.empty() || wallabag_updated)
+        root["wallabag"] = {{"archive", wallabag_archive}, {"updated", wallabag_updated}};
     // Invalid UTF-8 (odd file names) is replaced rather than throwing.
     return root.dump(1, ' ', false, json::error_handler_t::replace) + "\n";
 }
@@ -93,6 +95,16 @@ bool StateStore::from_json(const std::string& text) {
     if (root.is_discarded() || !root.is_object())
         return false;
     books_.clear();
+    wallabag_archive.clear();
+    wallabag_updated = 0;
+    if (root.contains("wallabag") && root["wallabag"].is_object()) {
+        const json& w = root["wallabag"];
+        get_to(w, "updated", wallabag_updated);
+        if (w.contains("archive") && w["archive"].is_array())
+            for (const json& id : w["archive"])
+                if (id.is_number_integer() && id.get<int64_t>() > 0)
+                    wallabag_archive.push_back(id.get<int64_t>());
+    }
     if (root.contains("settings") && root["settings"].is_object())
         settings = settings_from_json(root["settings"]);
     if (root.contains("books") && root["books"].is_object()) {
@@ -182,6 +194,11 @@ BookState* StateStore::find(const std::string& book) {
 
 BookState& StateStore::at(const std::string& book) {
     return books_[book];
+}
+
+void StateStore::forget(const std::string& book) {
+    if (books_.erase(book))
+        dirty_ = true;
 }
 
 std::vector<std::string> StateStore::recent(size_t max) const {

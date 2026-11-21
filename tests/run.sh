@@ -1,8 +1,10 @@
 #!/bin/sh
 # Run every automated test (must stay green):
 #   * C++ unit tests (tests/unit_tests.cpp) inside the SDK; with books in
-#     .dev/sample_ebooks the engine integration tests open real ones, and
-#     tests/make-hostile-epubs.py makes malformed archives to refuse
+#     .dev/sample_ebooks the engine integration tests open real ones,
+#     tests/make-hostile-epubs.py makes malformed archives to refuse, and
+#     the wallabag sync runs against tests/fake-wallabag.py (no network: the
+#     SDK sandbox has only its own loopback)
 #   * the Steam shortcut tool's tests (Python, against a fake HOME)
 #   * consistency checks between the version, the metainfo and the manifest
 set -eu
@@ -31,6 +33,7 @@ scripts/sdk-run.sh env \
     DECKREADER_TEST_BOOKS_DIR="$( [ -n "$book" ] && echo "$samples" )" \
     DECKREADER_TEST_FONTS="$root/.dev/app/share/deckreader/fonts" \
     DECKREADER_TEST_ENGINE_DATA="$root/.dev/prefix/share/crengine-ng" \
+    DECKREADER_TEST_FAKE_WALLABAG="$here/fake-wallabag.py" \
     .dev/build/unit_tests > "$log" 2>&1 || status=$?
 grep -v -E '^[0-9/]+ [0-9:.]+ (WARN|ERROR) ' "$log" || true
 [ "$status" = 0 ] || { echo "unit tests FAILED (exit status $status)" >&2; exit 1; }

@@ -44,12 +44,47 @@ flatpak override --user --filesystem=/path/to/books:ro io.github.nicocarbone.Dec
 | `clock` | `24h` | `24h` or `12h` in the status overlay. |
 | `accent_color` | `#10A38F` | Colour of selections and highlights (teal; DeckVideoPlayer's blue is `#1A9FFF`). |
 
+## [wallabag]
+
+Web articles saved with [wallabag](https://wallabag.org) (the hosted
+wallabag.it or your own server), read like books (D31). Nothing changes
+until all five of `server`, `client_id`, `client_secret`, `username` and
+`password` are set; then the start screen shows **Articles**. Y on it, or
+Menu → *Update articles*, downloads your unread articles (Menu → *Stop
+updating articles* while it runs); Menu → *Mark as read in wallabag* (on
+an article, or while reading one) archives it. The network is used only
+then.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `server` | — | The address you open wallabag at, with `https://` (wallabag.it: `https://app.wallabag.it`). If the server sits under a path, include it (`https://example.com/wallabag`). `http://` only for a server on your own network: on the internet the password would travel unencrypted (the log warns). |
+| `client_id`, `client_secret` | — | An API client: in wallabag's web page, *API clients management* (`/developer` on the server) → *Create a new client*, any name. |
+| `username`, `password` | — | Your wallabag login. Kept in this file as written; put the password in `"quotes"` if it starts or ends with a space. |
+| `max_articles` | `50` | How many unread articles to keep on the Deck, newest first (1–500). Older unread ones are left in wallabag. |
+| `images` | `yes` | Download the articles' pictures from the sites that host them, as your phone's browser does. Only from the internet: pictures that point at the Deck itself or your home network are left out, except your wallabag server's own. `no`: text only, and DeckReader contacts only your wallabag server. |
+
+Articles that are no longer unread in wallabag (read or deleted on the
+phone) are removed from the Deck at the next update, with their reading
+position. An article that couldn't be downloaded is tried again next time.
+
+Example for wallabag.it:
+
+```ini
+[wallabag]
+server = https://app.wallabag.it
+client_id = 12345_abcdefghijklmnopqrstuvwxyz0123456789
+client_secret = abcdefghijklmnopqrstuvwxyz0123456789abcd
+username = yourname
+password = your password
+```
+
 ## Files
 
 | Path | Content |
 |---|---|
 | `~/.config/deckreader/config.ini` | This file |
-| `~/.var/app/io.github.nicocarbone.DeckReader/data/deckreader/state.json` | Reading settings, positions, bookmarks (outside the Flatpak: `~/.local/share/deckreader/`) |
+| `~/.var/app/io.github.nicocarbone.DeckReader/data/deckreader/state.json` | Reading settings, positions, bookmarks, articles waiting to be marked as read (outside the Flatpak: `~/.local/share/deckreader/`) |
+| `~/.var/app/io.github.nicocarbone.DeckReader/data/deckreader/articles/` | The downloaded wallabag articles (`<id>.epub`) |
 | `~/.var/app/io.github.nicocarbone.DeckReader/cache/deckreader/` | Covers, titles and laid-out books; safe to delete |
 
 Environment overrides (development and tests): `DECKREADER_CONFIG_DIR`,

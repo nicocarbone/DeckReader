@@ -22,6 +22,7 @@ public:
     void show_root();
     // Re-reads the current location (after returning from a book, Refresh).
     void refresh();
+    bool in_articles() const { return !stack_.empty() && stack_.back().articles; }
     void handle(const InputEvent& e);
     void draw(Ui& ui);
     void tap(float x, float y); // units
@@ -32,6 +33,7 @@ public:
 private:
     struct Location {
         enum Type { Root, Folder } type = Root;
+        bool articles = false; // the Articles folder (D31)
         std::string path, title;
         std::vector<LibEntry> entries;
         int selected = 0;
@@ -43,6 +45,8 @@ private:
     // Moves the cursor one selectable row (wrapping or not).
     void step(Location& loc, int dir, bool wrap);
     void list(Location& loc);
+    // Book folders share one sort order; the Articles folder has its own.
+    SortMode& sort_for(const Location& loc) { return loc.articles ? article_sort_ : sort_; }
     void open_menu();
     void open_info(const LibEntry& e);
     int rows_visible(const Ui& ui) const;
@@ -53,6 +57,7 @@ private:
     App& app_;
     std::vector<Location> stack_;
     SortMode sort_ = SortMode::Name;
+    SortMode article_sort_ = SortMode::Newest; // the reading list order
     int last_rows_ = 8;
     float list_top_ = 124;
     // Next index to check for missing metadata in the current location.

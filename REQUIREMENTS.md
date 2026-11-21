@@ -114,13 +114,13 @@ Every screen (Library, Reader, Table of Contents, Settings) must be 100% operabl
 | A | open / read | show or hide the HUD (DVP: A shows the playback overlay) | select |
 | B | back / quit at the start screen | close the HUD, else back to the library | close |
 | X | read from the start (DVP: play from start) | add or remove a bookmark | secondary action (e.g. delete bookmark) |
-| Y | sort | cycle the color theme | — |
+| Y | sort (in folders); update the articles (on the Articles row) | cycle the color theme | — |
 | D-pad ↑↓ | move | previous / next chapter | move |
 | D-pad ←→ | page through the list | previous / next page | change value |
 | L1 / R1 | page through the list | previous / next page | page through the list |
 | L2 / R2 | first / last | previous / next chapter (DVP: chapters) | first / last |
 | View (⧉) | book info (DVP: video info) | Table of Contents | — |
-| Menu (☰) | menu (refresh, about, quit) | reading settings (and about) | — |
+| Menu (☰) | menu (update or stop updating articles, mark as read in wallabag, refresh, about, quit) | reading settings (mark as read in wallabag, about) | — |
 | Left stick | as the D-pad | **hold left/right to scrub** with a live page/chapter preview; up/down as the D-pad | as the D-pad |
 
 The Steam and "…" buttons stay with Steam. Keyboard keys match `DeckVideoPlayer`'s (arrows, Enter, Backspace, x, y, m, i, PgUp/PgDn, Home/End, Ctrl+Q).
@@ -149,6 +149,13 @@ The Steam and "…" buttons stay with Steam. Keyboard keys match `DeckVideoPlaye
 - Primary format: `.epub` (EPUB 2 and EPUB 3). **DRM-protected books are not supported.**
 
 ### 6.2 Network Catalog \& Offline Downloads (Optional Phase 2)
+
+- **Web articles from wallabag** (v0.3, D31): the unread articles of a
+  wallabag account (wallabag.it or self-hosted), saved on the phone,
+  made into EPUBs on the Deck (pictures included) into an
+  Articles source on request, read offline like books, and marked as read
+  in wallabag from the Deck. Account details in `config.ini`; nothing
+  shown until they are set; the network used only on request.
 
 - Support **OPDS (Open Publication Distribution System)** feeds—the open standard supported by self-hosted servers (Calibre-web, Kavita, Komga)—using simple HTTP/HTTPS + Basic/Token authentication. Credentials are first entered in `config.ini` (as `DeckVideoPlayer` does for its OpenSubtitles key): the Steam on-screen keyboard cannot be reliably opened by a non-Steam application. A controller-driven on-screen keyboard may follow, built so `DeckVideoPlayer` can reuse it (its roadmap needs a first text field too).
 - **Offline Download Manager:** Download remote `.epub` files directly into the local library folder with progress feedback so books remain 100% readable offline.

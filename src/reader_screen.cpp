@@ -450,6 +450,14 @@ void ReaderScreen::open_settings() {
         s->text_aa = (s->text_aa + d + TEXT_AA_COUNT) % TEXT_AA_COUNT;
         settings_changed(true);
     });
+    if (app_.articles->is_article(book_.path()))
+        m->items.push_back({"Mark as read in wallabag", nullptr, nullptr, [this] {
+                                // Closes the article (its position is saved, then forgotten).
+                                std::string path = book_.path();
+                                app_.close_menus();
+                                app_.show_library();
+                                app_.articles->mark_read(path);
+                            }});
     m->items.push_back({"About DeckReader", nullptr, nullptr, [this] { app_.open_about(); }});
     m->items.push_back({"Close book", nullptr, nullptr, [this] {
                             app_.close_menus();

@@ -10,7 +10,7 @@ DeckReader's own source (`scripts/make-source-archive.py`, D27).
 
 | Component | Version | Licence | Use |
 |---|---|---|---|
-| [crengine-ng](https://gitlab.com/coolreader-ng/crengine-ng) | 0.9.15 + 1 commit, with five patches (`patches/`) | GPL-2.0-or-later | Book engine (statically linked) |
+| [crengine-ng](https://gitlab.com/coolreader-ng/crengine-ng) | 0.9.15 + 1 commit, with six patches (`patches/`) | GPL-2.0-or-later | Book engine (statically linked) |
 | crengine-ng's bundled code: md4c, nanosvg, qimagescale | (in crengine-ng) | MIT; zlib; Qt's LGPL-3.0 / GPL-2.0-or-later option plus BSD-2-Clause (see crengine-ng's `thirdparty/`) | Markdown, SVG images, image scaling |
 | crengine-ng's hyphenation patterns | (in crengine-ng) | various TeX pattern licences (see `crengine/data/hyph/README.md`) | Hyphenation |
 | [libunibreak](https://github.com/adah1972/libunibreak) | 8.0.1 | zlib | Line breaking |
@@ -22,8 +22,10 @@ DeckReader's own source (`scripts/make-source-archive.py`, D27).
 
 From the Freedesktop runtime (not bundled): SDL3 (zlib), FreeType
 (FTL/GPLv2, used under GPLv2), HarfBuzz (MIT), FriBiDi (LGPL-2.1+), libpng,
-libjpeg-turbo, libwebp, zstd, zlib, fontconfig, and libsystemd's sd-bus
-(LGPL-2.1-or-later), used by the keep-awake helper.
+libjpeg-turbo, libwebp, zstd, zlib, fontconfig, libsystemd's sd-bus
+(LGPL-2.1-or-later), used by the keep-awake helper, and libcurl (curl
+licence, MIT-style) with OpenSSL (Apache-2.0), used for the wallabag
+articles; zlib also writes their EPUBs.
 
 Steam, Steam Deck and SteamOS are trademarks of Valve Corporation. This
 project is not affiliated with or endorsed by Valve. The Steam artwork in

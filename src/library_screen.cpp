@@ -34,11 +34,12 @@ void LibraryScreen::list(Location& loc) {
         keep = loc.entries[static_cast<size_t>(loc.selected)].path;
     switch (loc.type) {
     case Location::Root:
-        loc.entries = list_root(app_.cfg, app_.state, app_.mountinfo(), app_.paths.home);
+        loc.entries = list_root(app_.cfg, app_.state, app_.mountinfo(), app_.paths.home,
+                                app_.articles->configured() ? app_.articles->dir() : std::string());
         break;
     case Location::Folder:
         loc.entries = list_folder(loc.path);
-        sort_entries(loc.entries, sort_, app_.meta, app_.state);
+        sort_entries(loc.entries, sort_for(loc), app_.meta, app_.state);
         break;
     }
     loc.selected = -1;
@@ -117,12 +118,15 @@ void LibraryScreen::enter(const LibEntry& e, bool from_start) {
         return;
     case LibEntry::Folder:
     case LibEntry::Source: {
+        if (e.articles)
+            make_dirs(e.path);
         if (!is_dir(e.path)) {
             app_.toast("Folder not found: " + e.path);
             return;
         }
         Location loc;
         loc.type = Location::Folder;
+        loc.articles = e.articles;
         loc.path = e.path;
         loc.title = e.name;
         stack_.push_back(loc);
@@ -178,11 +182,17 @@ void LibraryScreen::handle(const InputEvent& e) {
         return;
     case Action::Y:
         if (loc.type == Location::Folder) {
-            sort_ = sort_ == SortMode::Name ? SortMode::Author : sort_ == SortMode::Author ? SortMode::Recent : SortMode::Name;
-            sort_entries(loc.entries, sort_, app_.meta, app_.state);
+            SortMode& sort = sort_for(loc);
+            sort = sort == SortMode::Name     ? SortMode::Author
+                   : sort == SortMode::Author ? SortMode::Recent
+                   : sort == SortMode::Recent ? SortMode::Newest
+                                              : SortMode::Name;
+            sort_entries(loc.entries, sort, app_.meta, app_.state);
             loc.selected = 0;
             loc.scroll = 0;
-            app_.toast(sort_label(sort_));
+            app_.toast(sort_label(sort));
+        } else if (const LibEntry* s = sel(); s && s->articles) {
+            app_.articles->update(); // Y on the Articles row (D31)
         }
         break;
     case Action::View:
@@ -202,7 +212,25 @@ void LibraryScreen::open_menu() {
     auto m = std::make_unique<Menu>();
     m->title = "DeckReader";
     Location& loc = stack_.back();
-    if (!loc.entries.empty() && loc.entries[static_cast<size_t>(loc.selected)].recent) {
+    const LibEntry* sel = loc.entries.empty() ? nullptr : &loc.entries[static_cast<size_t>(loc.selected)];
+    if (app_.articles->configured() && app_.articles->busy())
+        m->items.push_back({"Stop updating articles", nullptr, nullptr, [this] {
+                                app_.close_menus();
+                                app_.articles->stop();
+                            }});
+    else if (app_.articles->configured())
+        m->items.push_back({"Update articles", nullptr, nullptr, [this] {
+                                app_.close_menus();
+                                app_.articles->update();
+                            }});
+    if (sel && sel->kind == LibEntry::Book && app_.articles->is_article(sel->path)) {
+        std::string path = sel->path;
+        m->items.push_back({"Mark as read in wallabag", nullptr, nullptr, [this, path] {
+                                app_.close_menus();
+                                app_.articles->mark_read(path);
+                            }});
+    }
+    if (sel && sel->recent) {
         std::string path = loc.entries[static_cast<size_t>(loc.selected)].path;
         m->items.push_back({"Remove from recently read", nullptr, nullptr, [this, path] {
                                 // Hidden until the book is read again.
@@ -300,7 +328,7 @@ bool LibraryScreen::idle_work() {
     // cursor on the same book (D22).
     if (loc.type == Location::Folder && fetched_any_) {
         std::string keep = loc.entries.empty() ? std::string() : loc.entries[static_cast<size_t>(loc.selected)].path;
-        sort_entries(loc.entries, sort_, app_.meta, app_.state);
+        sort_entries(loc.entries, sort_for(loc), app_.meta, app_.state);
         for (size_t i = 0; i < loc.entries.size(); i++)
             if (loc.entries[i].path == keep)
                 loc.selected = static_cast<int>(i);
@@ -331,13 +359,17 @@ void LibraryScreen::draw_row(Ui& ui, const LibEntry& e, float y, bool sel) {
             ui.icon_card(LEFT, cy, 32, icon);
         else if (e.kind == LibEntry::Source && e.icon == LibEntry::IconUsb)
             ui.icon_usb(LEFT, cy, 32, icon);
+        else if (e.kind == LibEntry::Source && e.icon == LibEntry::IconArticles)
+            ui.icon_articles(LEFT, cy, 32, icon);
         else
             ui.icon_folder(LEFT, cy, 32, e.missing ? ui.col(th.dim) : icon);
-        if (e.detail.empty()) {
+        // The Articles row says how the sync is going (D31).
+        const std::string detail = e.articles ? app_.articles->status() : e.detail;
+        if (detail.empty()) {
             ui.text(TEXT_X, cy, e.name, 21, fg, sel, ALIGN_LEFT, right - TEXT_X);
         } else {
             ui.text(TEXT_X, cy - 11, e.name, 21, e.missing && !sel ? ui.col(th.subtext) : fg, sel, ALIGN_LEFT, right - TEXT_X);
-            ui.text(TEXT_X, cy + 15, e.detail, 15, sub, false, ALIGN_LEFT, right - TEXT_X);
+            ui.text(TEXT_X, cy + 15, detail, 15, sub, false, ALIGN_LEFT, right - TEXT_X);
         }
         return;
     }
@@ -411,12 +443,14 @@ void LibraryScreen::draw(Ui& ui) {
             sources++;
     }
     if (loc.type != Location::Root) {
-        std::string count = books == 1 ? "1 book" : strf("%d books", books);
+        const char* one = loc.articles ? "1 article" : "1 book";
+        std::string count = books == 1 ? std::string(one) : strf(loc.articles ? "%d articles" : "%d books", books);
         if (folders)
             count = (folders == 1 ? std::string("1 folder") : strf("%d folders", folders)) + " \xC2\xB7 " + count;
-        ui.text(ui.W() - 40, 50, count, 16, ui.col(th.subtext), false, ALIGN_RIGHT);
-        if (loc.type == Location::Folder)
-            ui.text(ui.W() - 40, 78, sort_label(sort_), 13, ui.col(th.dim), false, ALIGN_RIGHT);
+        ui.text(ui.W() - 40, 50, count, 16, ui.col(th.subtext), false, ALIGN_RIGHT, 270);
+        // While the articles update, how far it got instead of the order.
+        std::string under = loc.articles && app_.articles->busy() ? app_.articles->status() : sort_label(sort_for(loc));
+        ui.text(ui.W() - 40, 78, under, 13, ui.col(th.dim), false, ALIGN_RIGHT, 270);
     } else {
         ui.text(ui.W() - 40, 50, sources == 1 ? std::string("1 source") : strf("%d sources", sources), 16,
                 ui.col(th.subtext), false, ALIGN_RIGHT);
@@ -427,6 +461,12 @@ void LibraryScreen::draw(Ui& ui) {
     keep_visible(rows);
     if (loc.entries.empty()) {
         std::string msg = "No books here. Copy .epub files into this folder, then choose Refresh in the menu.";
+        if (loc.articles && app_.articles->busy())
+            msg = "Downloading your unread wallabag articles\xE2\x80\xA6 They appear here as they arrive.";
+        else if (loc.articles)
+            msg = app_.state.wallabag_updated
+                      ? "No unread articles. Save some with wallabag, then choose Update articles in the menu."
+                      : "No articles yet. Choose Update articles in the menu to download your unread wallabag articles.";
         float y = list_top_ + 40;
         for (const std::string& line : ui.wrap(msg, 20, false, ui.W() - 160, 3)) {
             ui.text(LEFT, y, line, 20, ui.col(th.subtext));
@@ -457,6 +497,8 @@ void LibraryScreen::draw(Ui& ui) {
     hints.push_back({Glyph::B, stack_.size() > 1 ? "Back" : "Quit"});
     if (loc.type == Location::Folder)
         hints.push_back({Glyph::Y, "Sort"});
+    else if (s && s->articles)
+        hints.push_back({Glyph::Y, "Update"});
     if (book)
         hints.push_back({Glyph::View, "Info"});
     hints.push_back({Glyph::Menu, "Menu"});

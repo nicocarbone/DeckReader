@@ -1,0 +1,64 @@
+From: DeckReader
+Subject: [PATCH] LVStreamFragment: reads and seeks stay within the fragment
+
+* Read() passed the whole request to the parent stream, so reading a
+  stored (method 0) ZIP entry to its end went on into the next entry's
+  header and data, or the central directory. Reads now stop at the
+  fragment's end (0 bytes and LVERR_FAIL there, as a file at its end).
+* Seek() ignored the offset for LVSEEK_END and passed LVSEEK_CUR to the
+  parent stream, whose position another fragment of the same archive may
+  have moved. Both are now relative to the fragment; positions outside
+  0..size are refused.
+---
+diff --git a/crengine/src/lvstream/lvstreamfragment.h b/crengine/src/lvstream/lvstreamfragment.h
+index c0b8bb80..f6e39238 100644
+--- a/crengine/src/lvstream/lvstreamfragment.h
++++ b/crengine/src/lvstream/lvstreamfragment.h
+@@ -45,15 +45,24 @@ public:
+     }
+ 
+     virtual lverror_t Seek(lvoffset_t pos, lvseek_origin_t origin, lvpos_t* newPos) {
++        // Positions are the fragment's own, from 0 to m_size: LVSEEK_CUR from
++        // m_pos (the parent stream may have moved since, for another
++        // fragment), LVSEEK_END with its offset.
++        lvoffset_t from;
+         if (origin == LVSEEK_SET)
+-            pos += m_start;
+-        else if (origin == LVSEEK_END) {
+-            origin = LVSEEK_SET;
+-            pos = m_start + m_size;
+-        }
+-        lverror_t res = m_stream->Seek(pos, origin, &m_pos);
++            from = 0;
++        else if (origin == LVSEEK_CUR)
++            from = (lvoffset_t)m_pos;
++        else if (origin == LVSEEK_END)
++            from = (lvoffset_t)m_size;
++        else
++            return LVERR_FAIL;
++        lvoffset_t to = from + pos;
++        if (to < 0 || (lvsize_t)to > m_size)
++            return LVERR_FAIL;
++        lverror_t res = m_stream->Seek((lvoffset_t)(m_start + to), LVSEEK_SET, NULL);
+         if (res == LVERR_OK)
+-            m_pos -= m_start;
++            m_pos = (lvpos_t)to;
+         if (newPos) {
+             *newPos = m_pos;
+         }
+@@ -64,6 +73,15 @@ public:
+     }
+     virtual lverror_t Read(void* buf, lvsize_t size, lvsize_t* pBytesRead) {
+         lvsize_t bytesRead = 0;
++        // Never past the fragment's end: after a stored ZIP entry come the
++        // next entry's header and data.
++        if (m_pos >= m_size) {
++            if (pBytesRead)
++                *pBytesRead = 0;
++            return size ? LVERR_FAIL : LVERR_OK; // as a file at its end
++        }
++        if (size > m_size - m_pos)
++            size = m_size - m_pos;
+         lvpos_t p;
+         lverror_t res = m_stream->Seek(m_pos + m_start, LVSEEK_SET, &p);
+         if (res != LVERR_OK)

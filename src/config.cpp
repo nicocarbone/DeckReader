@@ -1,4 +1,5 @@
 #include "config.h"
+#include "http.h"
 
 #include "util.h"
 
@@ -96,12 +97,57 @@ Config parse_config(const std::string& text, const std::string& home) {
             ok = !value.empty() && end && *end == '\0' && v >= 1 && v <= 240;
             if (ok)
                 cfg.keep_awake_minutes = static_cast<int>(v);
+        } else if (section == "wallabag" && key == "server") {
+            cfg.wallabag.server = value;
+            const std::string lower = to_lower(value);
+            ok = value.empty() || ((starts_with(lower, "https://") || starts_with(lower, "http://")) &&
+                                   !url_host(value).empty());
+            if (!ok) {
+                cfg.wallabag.server.clear();
+            } else if (starts_with(lower, "http://")) {
+                // Fine at home; on the internet the password travels unencrypted.
+                const std::string host = host_name(url_host(value));
+                const bool local = host == "localhost" || (is_ip(host) && !public_ip(host));
+                if (!local)
+                    cfg.warnings.push_back("[wallabag] server uses http://: the password and the articles are sent "
+                                           "unencrypted; use https:// unless the server is on your own network");
+            }
+        } else if (section == "wallabag" && key == "client_id") {
+            cfg.wallabag.client_id = value;
+        } else if (section == "wallabag" && key == "client_secret") {
+            cfg.wallabag.client_secret = value;
+        } else if (section == "wallabag" && key == "username") {
+            cfg.wallabag.username = value;
+        } else if (section == "wallabag" && key == "password") {
+            cfg.wallabag.password = value;
+        } else if (section == "wallabag" && key == "images") {
+            ok = parse_bool(value, &cfg.wallabag.images);
+        } else if (section == "wallabag" && key == "max_articles") {
+            char* end = nullptr;
+            long v = std::strtol(value.c_str(), &end, 10);
+            ok = !value.empty() && end && *end == '\0' && v >= 1 && v <= 500;
+            if (ok)
+                cfg.wallabag.max_articles = static_cast<int>(v);
         } else {
             cfg.warnings.push_back(strf("line %d: unknown setting [%s] %s", lineno, section.c_str(), key.c_str()));
             continue;
         }
         if (!ok)
-            cfg.warnings.push_back(strf("line %d: bad value for %s: %s", lineno, key.c_str(), value.c_str()));
+            cfg.warnings.push_back(strf("line %d: bad value for %s: %s", lineno, key.c_str(),
+                                        key == "password" || key == "client_secret" ? "(hidden)" : value.c_str()));
+    }
+    const WallabagSettings& w = cfg.wallabag;
+    if (!w.configured() && (!w.server.empty() || !w.client_id.empty() || !w.client_secret.empty() ||
+                            !w.username.empty() || !w.password.empty())) {
+        std::string missing;
+        for (auto [name, v] : {std::pair<const char*, const std::string*>{"server", &w.server},
+                               {"client_id", &w.client_id},
+                               {"client_secret", &w.client_secret},
+                               {"username", &w.username},
+                               {"password", &w.password}})
+            if (v->empty())
+                missing += std::string(missing.empty() ? "" : ", ") + name;
+        cfg.warnings.push_back("[wallabag] is not complete (missing: " + missing + "); articles are off");
     }
     if (!folders_seen)
         cfg.folders.push_back(path_join(home, "Books"));

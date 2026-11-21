@@ -10,7 +10,8 @@ cited as "DeckVideoPlayer Dn".
 The main loop sleeps in `SDL_WaitEventTimeout` with a timeout only when a
 timer is really pending (a held button's repeat, a toast, the HUD clock,
 a debounced save, a re-layout, the left-stick scrub, the keep-awake
-release of D28). Nothing renders while
+release of D28). The wallabag thread (D31) wakes it with an event, not a
+timer. Nothing renders while
 a page is just being read: measured 1 CPU tick (10 ms) in 5 s with a page
 on screen. A frame is the page texture (opaque) plus, only when something
 is shown on top, the interface overlay (premultiplied alpha). Requirements
@@ -41,9 +42,9 @@ Both the Flatpak and `scripts/dev-build.sh` apply it.
 `~/Books`, Documents, Downloads and removable media, read-only (v0.1
 never writes there); settings in the real `~/.config/deckreader`. As in
 DeckVideoPlayer D39: a malicious book exploiting a parser bug must not be
-able to read SSH keys or other apps' data. No network permission in v0.1
-(nothing uses it). Other folders: `flatpak override` (documented in
-`config.ini`).
+able to read SSH keys or other apps' data. No network permission until
+v0.3, which adds it for the wallabag articles only (D31). Other folders:
+`flatpak override` (documented in `config.ini`).
 
 ## D5. EPUB archives are checked before parsing
 
@@ -91,7 +92,8 @@ no meaning in a reader). The left stick scrubs in the reader (hold:
 accelerating, 2 to 62 pages per second; a flick turns one screen); in lists
 it acts as the D-pad, as in DeckVideoPlayer. Taps work (reader zones,
 list rows), unlike DeckVideoPlayer, because a reader's tap zones are
-unambiguous.
+unambiguous. On the start screen Y does nothing except on the Articles
+row, where it updates the articles (D31); in folders it sorts.
 
 ## D9. Bundled fonts only
 
@@ -512,3 +514,226 @@ is 760 units wide, so the Flatpak's data path fits at 1280×800.
   - A full action-style build in the image (`xvfb-run flatpak-builder
     --install-deps-from=flathub …`, then `flatpak build-bundle`) works.
 - The same step is in DeckVideoPlayer's workflow (its D83).
+
+## D31. Web articles from wallabag
+
+- **What:** articles saved with [wallabag](https://wallabag.org) (the
+  hosted wallabag.it or a server of one's own) appear in the library as an
+  **Articles** source, after the book folders, and read like books.
+  Saving happens on the phone (wallabag's apps or the browser's share
+  menu); the Deck only downloads. wallabag extracts the article text on
+  the server, so DeckReader needs no extraction of its own and no web
+  engine (requirements 3.1). Considered: a local file of URLs read by the
+  app (it would need a readability extractor and per-site fetching in the
+  app, and no phone → Deck path).
+- **API**, read in wallabag 2.6.17's source (`EntryRestController`,
+  `EntriesExport`), the version wallabag.it reported (`/api/info`,
+  2026-11-20):
+  - `POST /oauth/v2/token`, password grant (client ID and secret from
+    the account's *API clients management* page, plus username and
+    password). A new token for each sync: nothing to store, and the
+    password would be needed anyway once a refresh token expires (two
+    weeks by default).
+  - `GET /api/entries.json?archive=0&sort=created&order=desc&detail=metadata&page=P&perPage=N`:
+    the newest `max_articles` unread articles (default 50, 1–500),
+    without their content, page after page (at most 100 a page) until
+    `max_articles` or the last page (D32: a server that limits pages must
+    not make the later ones look read).
+  - `GET /api/entries/{id}.json`: one article, its HTML and details
+    (title, address, site, authors, language, dates, reading time,
+    preview picture).
+  - `PATCH /api/entries/{id}.json` with `archive=1`: marked as read.
+- **The EPUB is made by DeckReader** (`src/epubwrite.*`), not by
+  wallabag. Its export (`/api/entries/{id}/export.epub`) was the first
+  plan, but on wallabag.it (2.6.17) it leaves the pictures as links to
+  their sites, which the engine draws as empty squares, has no author (an
+  empty "Published by"), and adds a title page and a "Produced by
+  wallabag" page. Our book: one page with the title, a line "authors ·
+  site · date · N min read", the article and the original address; the
+  pictures inside; the preview picture as the cover (library thumbnails);
+  author = the authors, else the site (the library's second line);
+  language from wallabag (hyphenation). A small ZIP writer on zlib; the
+  same article gives the same file.
+- **Pictures** are downloaded from the sites that host them, as the
+  phone's browser does (`images = no` turns this off: text only). A plain
+  GET: no wallabag token, no cookies; redirects followed (pictures only).
+  JPEG, PNG, GIF, WebP and SVG, recognised from their first bytes (what
+  the engine shows); other formats (AVIF), missing pictures and lazy-load
+  placeholders are left out, and their tags removed, so no broken
+  squares. Lazy-loading attributes (`data-src`...) win over `src`;
+  `srcset` is split as HTML does (image CDNs put commas in addresses).
+  Only from the internet: no connection to this device, the local network
+  or link-local addresses, checked on the address actually connected to
+  (redirects included), except for the wallabag server's own host
+  (pictures wallabag stored itself) (D32). Limits per article: 60
+  pictures (the cover first), 10 MB each, 32 MB in all, 60 s each, given
+  up below 1 KB/s for 15 s; a host that can't be reached (not found,
+  refused, too slow, TLS failed) is skipped for the rest of the article. One
+  libcurl handle per sync keeps connections open: on wallabag.it, 9
+  articles with 97 pictures took about 45 s (one slow site: 33 s for 20
+  SVGs), against over 90 s for 5 with a new connection per request.
+- **Settings:** `[wallabag]` in `config.ini` (server, client_id,
+  client_secret, username, password, max_articles, images). Nothing appears until
+  all five are set; a half-filled section is reported in the log with the
+  missing keys. The password is in the file as written (the file is the
+  user's, as DeckVideoPlayer keeps its OpenSubtitles key there); it never
+  appears in the log.
+- **Storage:** `<data>/deckreader/articles/<id>.epub`, written atomically
+  (D6), dated when the article was saved in wallabag. The Articles folder
+  opens sorted by newest (a new sort order, also offered in book folders:
+  file date); recently read articles are tagged "Article". File names come
+  only from the numeric ids; the books themselves are checked like any
+  other (D5).
+- **Sync** ("Update articles" in the library menu, or Y on the Articles
+  row): articles marked as read on the Deck are archived first; then the
+  unread list; the ones not on the Deck are downloaded (an article that
+  fails is counted and skipped); the ones no longer unread are removed
+  (not the one being read; it goes next time), with their reading state.
+  **Mark as read in wallabag** (library menu on an article, reading menu)
+  removes the article from the Deck at once and records its id in
+  `state.json` (`wallabag.archive`); a sync that only archives starts
+  right away, and if it can't reach the server the id is sent with the
+  next update. Ids waiting to be archived are never downloaded again.
+  While a sync runs, the menu offers **Stop updating articles** instead
+  (D32); what was downloaded stays, and "updated" is recorded only when a
+  whole update worked.
+- **Threading:** one background thread (`SyncWorker`, `src/wallabag.*`)
+  gets everything in a `SyncRequest` and never touches the app's state;
+  the main thread applies the `SyncResult` (`src/articles.*`). The thread
+  wakes the main loop with an SDL user event, on progress and when done:
+  no timers, no polling (D1). New articles appear in the list as they
+  arrive; the Articles row shows the phase ("Downloading… 3 of 12"), then
+  the count and when it was updated, or the last error. Quitting cancels
+  the sync (libcurl checks about once a second) and waits for the thread.
+- **HTTP:** libcurl from the Freedesktop runtime (OpenSSL, the runtime's
+  CA certificates, verification on). Only `http://` and `https://`.
+  Redirects are not followed (a POST would lose its body): the message
+  names the address to use instead. Limits: 16 MB for JSON (32 MB for
+  one article), 20 s to connect, 60 s per API call, 120 s per article.
+  Errors are short
+  sentences for the user: refused username or password, refused client,
+  host not found, no connection, certificate problem, HTTP status.
+- **Network permission:** `--share=network` in the Flatpak (D4 changes).
+  A Flatpak can't limit it to one host. The app uses the network only when
+  the user updates the articles (wallabag, and the sites of the articles'
+  pictures) or marks one as read, and only with `[wallabag]` set; the
+  README's privacy line says so. Feeds and OPDS catalogues
+  (roadmap) will use the same permission.
+- **Tests:** the pure parts (addresses, dates, token and list answers,
+  error messages, file names, the sync plan, the settings, the state) in
+  the unit tests; the whole sync, including the thread and cancelling,
+  against `tests/fake-wallabag.py`, a fake server on the SDK sandbox's
+  own loopback (the tests have no network). `tools/headless-run.sh` takes
+  `EXTRA_CONFIG=file` to add a `[wallabag]` section; dev and headless runs
+  now get the network, as the Flatpak does (`NET=1` in `sdk-run.sh`).
+- **Tried against wallabag.it** with the owner's account (2026-11-20,
+  headless on the dev PC): 9 unread articles downloaded with their
+  pictures (charts, photos, SVG figures), covers and sites in the list,
+  a second update downloads nothing.
+- **Found on the way:** crengine's `LVStreamFragment::Read` doesn't stop
+  at the end of a stored (uncompressed) ZIP entry; a reader that reads
+  until end of stream gets the rest of the file. The engine's own readers
+  use the entry's size and books display correctly, so it only showed in
+  a test helper. Patched in D32 (`crengine-ng-stream-fragment.patch`);
+  to report upstream (roadmap).
+
+## D32. Second audit (ISSUES.md, Gemini, v0.3.0 wallabag work) reviewed
+
+Every item was checked against the code (and crengine-ng's) before acting;
+749 unit checks after (639 before). The real wallabag.it account was
+downloaded again afterwards (headless, dev PC): 11 articles, 97 pictures,
+none left out, about 14 s.
+
+**Fixed**
+
+- **V3-SEC-1** (pictures from untrusted pages could make the Deck send
+  requests to itself or the home network): a picture request
+  (`HttpRequest::public_only`) refuses loopback, private, shared,
+  link-local, multicast and reserved addresses, IPv4 and IPv6, and
+  IPv4-mapped forms of them. The check is in libcurl's
+  `CURLOPT_OPENSOCKETFUNCTION`, on the address actually connected to, so
+  names that resolve there and redirects are covered. Pictures on the
+  wallabag server's own host are allowed (a server at home stores
+  pictures too). Test: a picture at `localhost` is left out while the
+  fake server at `127.0.0.1` serves the others.
+- **V3-SEC-2**: the access token must be printable ASCII without spaces
+  (it goes into a header).
+- **V3-SEC-3**: picture requests give up below 1 KB/s for 15 s and wait
+  10 s (not 20) to connect; test against a stalling endpoint.
+- **V3-SEC-4** (part): `server = http://` on a host that isn't
+  `localhost` or a local address is reported in the log (the password
+  would travel unencrypted); CONFIGURATION.md says so. `config.ini` is
+  created 0600 already (D6).
+- **V3-SEC-5**: `patches/crengine-ng-stream-fragment.patch`: reads stop
+  at a stored entry's end, `LVSEEK_END` uses its offset, `LVSEEK_CUR` is
+  relative to the fragment. The test helper now reads entries to their
+  end, and seeks are checked. Upstream report: roadmap.
+- **V3-BUG-1**: `srcset` split as HTML does (the address runs to white
+  space): Substack's and other CDNs' addresses hold commas. Matters for
+  Substack posts saved to wallabag.
+- **V3-BUG-2**: `data-src`, `data-lazy-src`, `data-original` and
+  `data-srcset` before `src`.
+- **V3-BUG-3**: addresses get spaces, control characters and non-ASCII
+  bytes as `%XX` (curl refused spaces); only a host that is unreachable
+  (`HttpResponse::unreachable`) is skipped for the rest of the article,
+  not one with a bad address or a picture too big.
+- **V3-BUG-4**: `resolve_url` handles a base without a path
+  (`https://x.example?p=1`), references that are only a query, and `.`
+  and `..` segments.
+- **V3-BUG-5** (parts 2 and 3): comments, `<script>` and `<style>` hold
+  no pictures; numeric references decode to UTF-8 (strictly; ones XML
+  can't hold are dropped), named ones the engine knows (`&mdash;`) are
+  kept rather than double-escaped.
+- **V3-BUG-6**: NUL and the control characters XML can't hold are left
+  out of every text the book gets; comments, `<script>` and `<style>`
+  elements are removed from the article (the book has its own style).
+- **V3-BUG-7**: the preview picture is fetched first, so the cover is
+  never the one left out; pictures past 60 are counted as left out. SVG
+  is recognised only when its first element is `<svg>`.
+- **V3-BUG-8**: the unread list is read page after page (above).
+- **V3-BUG-9**: "updated" is recorded only when the whole update worked
+  (removals still apply once the list came: they are right either way).
+- **V3-BUG-10**: dates with signs or out-of-range offsets are refused;
+  lower-case `z` accepted.
+- **V3-BUG-11**: `server = https://` (no host) is refused when reading
+  `config.ini`.
+- **V3-BUG-12**: "updated 09:05" with two digits, as the reading clock.
+- **V3-BUG-13**: the header's sync line has a width limit; an empty
+  Articles folder during an update says it is downloading; **Stop
+  updating articles** in the menu while a sync runs (it was only
+  cancellable by quitting).
+- **V3-OPT-2**: the pictures move into the archive instead of being
+  copied (they were in memory three times: the book, the ZIP items and
+  the archive), each is freed once written, and the total is now 32 MB:
+  the extra memory while making an article is about the size of its
+  pictures. Default deflate level.
+- **V3-OPT-3**: `MetaCache::forget`: removed articles leave no cached
+  title or cover thumbnail.
+- **V3-OPT-4** (part 1): while downloading, the library is re-read for
+  new articles only when it shows the Articles folder.
+- **V3-TEST-1**: the regression tests listed were added (unit tests and
+  `tests/fake-wallabag.py`: a per-page limit, a stalling endpoint).
+
+**Declined**
+
+- **V3-SEC-1, user name in a picture address**: libcurl would send the
+  page's own `user:pass` to that same host; none of our secrets are
+  involved, and redirects to other hosts don't carry it (libcurl's
+  default).
+- **V3-SEC-4, warning about the file's permissions**: the file is created
+  0600; an editor that changes that is the user's choice, and a log line
+  nobody sees on the Deck wouldn't help.
+- **V3-BUG-5 part 1** (`<img src=/a.png/>` read as `/a.png/`): that is
+  what HTML says (a `/` in an unquoted value belongs to it), and what
+  browsers do.
+- **V3-BUG-6, stray `</body>` in the article**: wallabag's content is
+  serialised from a parsed document, so its tags are balanced.
+- **V3-OPT-1** (parallel picture downloads with `curl_multi`): one
+  connection per site is already reused; 11 articles took about 14 s on
+  the dev PC. Updates run only on request and articles appear as they
+  arrive. Worth it only if the Deck shows slow updates (roadmap).
+- **V3-OPT-2, streaming the archive to the file**: with the copies gone
+  the archive is the only large buffer; not worth a second writer.
+- **V3-OPT-4 part 2** (closing an article before marking it read writes
+  its layout cache and refreshes twice): milliseconds, once per action;
+  the engine's cache is bounded (128 MB).

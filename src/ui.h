@@ -76,6 +76,7 @@ public:
     void icon_book(float x, float cy, float size, Color c);
     void icon_card(float x, float cy, float size, Color c);
     void icon_usb(float x, float cy, float size, Color c);
+    void icon_articles(float x, float cy, float size, Color c); // a news page
     void icon_check(float cx, float cy, float r);
     void icon_bookmark(float x, float y, float w, float h, Color c);
     void icon_battery(float x, float cy, float h, int percent, bool charging, Color c);

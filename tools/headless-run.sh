@@ -15,6 +15,8 @@
 #                      inside it is shown as "~/..." (screenshots)
 #   W=1280 H=800       screen size (try W=3840 H=2160 for a TV)
 #   KEEP=1             keep reading state from the previous run
+#   EXTRA_CONFIG=FILE  appended to the test config.ini, e.g. a [wallabag]
+#                      section (the run has the network, like the Flatpak)
 #   LOG=FILE           log file (default: .dev/headless.log)
 #   TIMEOUT=60         hard time limit in seconds
 #
@@ -44,6 +46,9 @@ books_esc=$(printf '%s' "$BOOKS" | sed 's/[\\&|]/\\&/g')
 sed -e "s|^folder = .*|folder = $books_esc|" \
     -e "s|^removable_media = .*|removable_media = no|" \
     "$root/data/config.ini" > "$CFG/config/config.ini"
+if [ -n "${EXTRA_CONFIG:-}" ]; then
+    cat "$EXTRA_CONFIG" >> "$CFG/config/config.ini"
+fi
 
 envs="DECKREADER_CONFIG_DIR=$CFG/config DECKREADER_DATA_DIR=$CFG/data DECKREADER_CACHE_DIR=$CFG/cache"
 [ -n "${HOME_DIR:-}" ] && envs="$envs HOME=$HOME_DIR"
@@ -61,6 +66,7 @@ if [ "$MODE" = flatpak ]; then
         io.github.nicocarbone.DeckReader $args --script "$script"
 else
     # shellcheck disable=SC2086
+    export NET=1 # the Flatpak has the network (D31)
     set -- "$root/scripts/sdk-run.sh" env $envs DECKREADER_APPDIR="$root/.dev/app/share/deckreader" \
         "$root/.dev/app/bin/deckreader" $args --script "$script"
     [ "$BACKEND" = gamescope ] && export GUI=1

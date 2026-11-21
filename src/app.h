@@ -3,6 +3,7 @@
 // input arrives or a timer that is actually needed comes due (D1).
 #pragma once
 
+#include "articles.h"
 #include "canvas.h"
 #include "config.h"
 #include "display.h"
@@ -57,6 +58,7 @@ public:
     Input input;
     UiTheme theme;
     KeepAwake keep_awake; // while reading (D28)
+    std::unique_ptr<Articles> articles; // wallabag (D31); made once SDL runs
 
     uint64_t now() const { return now_; }
     // Pixels per layout unit for book pages (screen height / 800).
@@ -64,7 +66,7 @@ public:
     bool engine_ready();
 
     void redraw() { dirty_ = true; }
-    void toast(const std::string& message);
+    void toast(const std::string& message, uint64_t ms = 2200);
     void push_menu(std::unique_ptr<Menu> m);
     // Both are safe to call from a menu item's own callback (the menus are
     // destroyed once the current input has been handled).
@@ -73,7 +75,13 @@ public:
     Menu* top_menu() { return menus_.empty() ? nullptr : menus_.back().get(); }
 
     void open_book(const std::string& path, bool from_start);
+    // The book being read, "" in the library.
+    std::string open_book_path() const;
     void show_library();
+    // Lists the library's current place again (when the library is shown).
+    void refresh_library();
+    // The library is showing the Articles folder.
+    bool showing_articles() const;
     void quit() { running_ = false; }
     void open_about();
 

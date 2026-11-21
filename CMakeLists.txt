@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(deckreader VERSION 0.2.0 LANGUAGES C CXX)
+project(deckreader VERSION 0.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -10,12 +10,17 @@ endif()
 
 include(GNUInstallDirs)
 find_package(PkgConfig REQUIRED)
+find_package(Threads REQUIRED)
 pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
 pkg_check_modules(FREETYPE REQUIRED IMPORTED_TARGET freetype2)
 pkg_check_modules(HARFBUZZ REQUIRED IMPORTED_TARGET harfbuzz)
 pkg_check_modules(PNG REQUIRED IMPORTED_TARGET libpng)
 # sd-bus, for the keep-awake helper only (in the Freedesktop runtime).
 pkg_check_modules(SYSTEMD REQUIRED IMPORTED_TARGET libsystemd)
+# HTTPS for the wallabag articles (D31; in the Freedesktop runtime).
+pkg_check_modules(CURL REQUIRED IMPORTED_TARGET libcurl)
+# zlib, to write the articles' EPUBs (D31).
+pkg_check_modules(ZLIB REQUIRED IMPORTED_TARGET zlib)
 # crengine-ng is built as a static library; its CMake package brings its
 # own dependencies (FreeType, HarfBuzz, FriBiDi, libunibreak, zstd...).
 find_package(crengine-ng REQUIRED CONFIG)
@@ -33,12 +38,15 @@ configure_file(src/version.h.in ${CMAKE_CURRENT_BINARY_DIR}/version.h @ONLY)
 add_library(deckreader_core STATIC
     src/about.cpp
     src/app.cpp
+    src/articles.cpp
     src/book.cpp
     src/canvas.cpp
     src/config.cpp
     src/display.cpp
     src/epubguard.cpp
+    src/epubwrite.cpp
     src/fsutil.cpp
+    src/http.cpp
     src/image_io.cpp
     src/input.cpp
     src/keepawake.cpp
@@ -55,12 +63,14 @@ add_library(deckreader_core STATIC
     src/text.cpp
     src/ui.cpp
     src/util.cpp
+    src/wallabag.cpp
 )
 target_include_directories(deckreader_core PUBLIC src ${CMAKE_CURRENT_BINARY_DIR}
     PRIVATE third_party)
 target_include_directories(deckreader_core SYSTEM PUBLIC ${CRENGINE_INCLUDE_DIR})
 target_link_libraries(deckreader_core PUBLIC
-    crengine-ng::crengine-ng PkgConfig::SDL3 PkgConfig::FREETYPE PkgConfig::HARFBUZZ PkgConfig::PNG)
+    crengine-ng::crengine-ng PkgConfig::SDL3 PkgConfig::FREETYPE PkgConfig::HARFBUZZ PkgConfig::PNG
+    PkgConfig::CURL PkgConfig::ZLIB Threads::Threads)
 target_compile_options(deckreader_core PRIVATE -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
 
 add_executable(deckreader src/main.cpp)

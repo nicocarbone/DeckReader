@@ -9,6 +9,19 @@
 
 namespace dr {
 
+// [wallabag]: web articles from a wallabag account (D31).
+struct WallabagSettings {
+    std::string server; // e.g. https://app.wallabag.it
+    std::string client_id, client_secret, username, password;
+    int max_articles = 50; // unread articles kept on the Deck, newest first, 1..500
+    bool images = true;    // download the articles' pictures from their sites
+    // All five set: the Articles source and its menu entries appear.
+    bool configured() const {
+        return !server.empty() && !client_id.empty() && !client_secret.empty() && !username.empty() &&
+               !password.empty();
+    }
+};
+
 struct Config {
     // [library]
     std::vector<std::string> folders; // "~" already expanded
@@ -22,6 +35,7 @@ struct Config {
     bool tap_zones = true;      // tap left/right edge to turn pages
     bool keep_awake = true;     // no dimming or sleep while reading (D28)
     int keep_awake_minutes = 10; // ...until this long without input, 1..240
+    WallabagSettings wallabag;
 
     // Problems found while reading the file (unknown keys, bad values).
     std::vector<std::string> warnings;
