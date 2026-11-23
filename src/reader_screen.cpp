@@ -31,8 +31,7 @@ bool ReaderScreen::open(const std::string& path, bool from_start, std::string* e
     if (!from_start && st.finished && st.xpointer.empty()) {
         // Marked as read in the library (D34): its last screen, as a book
         // read to the end, so it stays finished.
-        int n = book_.page_count(), pps = std::max(1, book_.pages_per_screen());
-        book_.go_to_page(std::max(0, n - 1 - (n - 1) % pps));
+        book_.go_to_page(engine::last_screen_page(book_.page_count(), book_.pages_per_screen()));
     } else if (from_start || st.xpointer.empty() || !book_.go_to_position(st.xpointer)) {
         book_.go_to_page(0);
     }

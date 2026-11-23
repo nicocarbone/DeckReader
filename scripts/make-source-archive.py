@@ -147,8 +147,9 @@ def main():
                 sys.exit(f"unsupported source type {kind!r} in module {name}")
         shutil.copy(args.manifest, top)
         index.append("\nThe Freedesktop Platform runtime (org.freedesktop.Platform: SDL3, FreeType, "
-                     "HarfBuzz, FriBiDi, libpng, libjpeg, libwebp, zstd, zlib, fontconfig) is "
-                     "distributed by Flathub, which publishes its source.\n"
+                     "HarfBuzz, FriBiDi, libpng, libjpeg, libwebp, zstd, zlib, fontconfig, "
+                     "libsystemd, libcurl, OpenSSL) is distributed by Flathub, which publishes "
+                     "its source.\n"
                      "Licences of each component are in its folder; the built Flatpak also "
                      "carries them in /app/share/licenses/.\n")
         with open(os.path.join(top, "SOURCES.md"), "w") as f:

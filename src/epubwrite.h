@@ -1,7 +1,8 @@
-// Writing EPUBs for wallabag articles (D31): a ZIP writer (zlib) and the
-// article book itself, one page with a title line, the article's text and
-// its pictures, and the preview picture as the cover. Pure functions: the
-// articles thread uses them, the unit tests check them.
+// Writing EPUBs for web articles (wallabag D31, Wikipedia D37): a ZIP
+// writer (zlib) and the article book itself, one page with a title line,
+// the article's text and its pictures, and the preview picture as the
+// cover. Pure functions: the articles thread uses them, the unit tests check
+// them.
 #pragma once
 
 #include <cstdint>
@@ -26,8 +27,16 @@ struct ArticleImage {
     std::string data;
 };
 
+// A section in the book's table of contents.
+struct ArticleSection {
+    std::string id;   // the heading's id in the article
+    std::string text; // as XML text (already escaped)
+    int level = 2;    // 2 or 3 (h3s go under the h2 before them)
+};
+
 struct ArticleBook {
     int64_t id = 0;
+    std::string source = "wallabag"; // the identifier: urn:<source>:<id>
     std::string title;
     std::string author;   // the article's authors, else its site
     std::string language; // BCP 47 ("en-US"); "" = not given
@@ -36,6 +45,8 @@ struct ArticleBook {
     std::string html;     // the article, pictures already pointing at images/
     std::vector<ArticleImage> images;
     std::string cover;    // href of the cover picture, "" = none
+    std::string css;      // added to the book's style
+    std::vector<ArticleSection> toc; // "" = one entry, the title
 };
 // Takes the book (its pictures move into the archive: pass it with
 // std::move when they are big).

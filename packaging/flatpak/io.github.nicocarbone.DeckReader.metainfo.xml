@@ -75,6 +75,9 @@
   <url type="donation">https://ko-fi.com/nicocarbone</url>
   <releases>
     <!-- Set the date when tagging the release (docs/DEVELOPMENT.md §6). -->
+    <release version="0.4.0" date="2026-11-23">
+      <description><p>Articles saved in the Wikipedia app's reading lists, a folder for each list, downloaded and read offline like the wallabag articles, with their pictures, formulas and references. No wallabag account needed.</p></description>
+    </release>
     <release version="0.3.2" date="2026-11-23">
       <description><p>Math in web articles: formulas that sites write in TeX (for MathJax or KaTeX) show as math, with a bundled math font (STIX Two Math) that EPUB books with MathML use too.</p></description>
     </release>

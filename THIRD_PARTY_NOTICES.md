@@ -27,8 +27,8 @@ From the Freedesktop runtime (not bundled): SDL3 (zlib), FreeType
 (FTL/GPLv2, used under GPLv2), HarfBuzz (MIT), FriBiDi (LGPL-2.1+), libpng,
 libjpeg-turbo, libwebp, zstd, zlib, fontconfig, libsystemd's sd-bus
 (LGPL-2.1-or-later), used by the keep-awake helper, and libcurl (curl
-licence, MIT-style) with OpenSSL (Apache-2.0), used for the wallabag
-articles; zlib also writes their EPUBs.
+licence, MIT-style) with OpenSSL (Apache-2.0), used for the wallabag and
+Wikipedia articles; zlib also writes their EPUBs.
 
 Steam, Steam Deck and SteamOS are trademarks of Valve Corporation. This
 project is not affiliated with or endorsed by Valve. The Steam artwork in

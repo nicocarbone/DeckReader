@@ -74,6 +74,10 @@ public:
     // The format of the article EPUBs on the Deck (wallabag.h,
     // ARTICLE_FORMAT; 0 = before 0.3.2): older ones are downloaded again.
     int wallabag_format = 0;
+    // Wikipedia reading lists (D37): when they were last updated, and the
+    // format of their EPUBs (wikipedia.h, WIKI_FORMAT).
+    int64_t wikipedia_updated = 0;
+    int wikipedia_format = 0;
 
     // Saving is rate-limited: the first change after a quiet period is
     // written at once, further ones at most every SAVE_INTERVAL_MS, so

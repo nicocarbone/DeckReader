@@ -1,8 +1,11 @@
 // Unit tests for DeckReader's pure logic. Run by tests/run.sh (inside the
 // SDK). With DECKREADER_TEST_BOOK set (and the fonts/engine folders), an
 // integration test also opens, lays out and renders a real book; with
-// DECKREADER_TEST_FAKE_WALLABAG (tests/fake-wallabag.py), the wallabag sync
-// runs against a fake server on 127.0.0.1.
+// DECKREADER_TEST_FAKE_WALLABAG (tests/fake-wallabag.py) and
+// DECKREADER_TEST_FAKE_WIKIPEDIA (tests/fake-wikipedia.py), the wallabag and
+// Wikipedia syncs run against fake servers on 127.0.0.1. With
+// DECKREADER_TEST_WIKI_PAGES, real pages saved from Wikipedia (Parsoid's
+// HTML, kept out of the repository) are cleaned and checked too.
 #include "about.h"
 #include "articles.h"
 #include "book.h"
@@ -22,12 +25,14 @@
 #include "texmath.h"
 #include "util.h"
 #include "wallabag.h"
+#include "wikipedia.h"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <csignal>
+#include <fcntl.h>
 #include <map>
 #include <mutex>
 #include <spawn.h>
@@ -1133,7 +1138,7 @@ TEST(wallabag_helpers) {
     CHECK_EQ(token_error(404, "<html>", ""), "No wallabag at this server address (HTTP 404).");
     CHECK_EQ(token_error(502, "", ""), "wallabag answered HTTP 502 to the login.");
 
-    std::vector<WallabagEntry> entries;
+    std::vector<ArticleEntry> entries;
     CHECK(parse_entries(R"({"page":1,"limit":30,"pages":1,"total":3,"_links":{},"_embedded":{"items":[
         {"id":12,"title":"Rice","created_at":"2026-11-19T08:00:00+0100","url":"https://e.example/1"},
         {"id":"13","title":"string id"},
@@ -1179,12 +1184,15 @@ TEST(wallabag_helpers) {
     CHECK_EQ(host_name("127.0.0.1"), "127.0.0.1");
 
     // Pictures only from the internet (V3-SEC-1, D32).
-    for (const char* ip : {"8.8.8.8", "172.32.0.1", "100.128.0.1", "::ffff:8.8.8.8", "2001:4860:4860::8888"})
+    for (const char* ip : {"8.8.8.8", "172.32.0.1", "100.128.0.1", "::ffff:8.8.8.8", "2001:4860:4860::8888",
+                           "64:ff9b::808:808"})
         CHECK(public_ip(ip));
     for (const char* ip : {"127.0.0.1", "127.1.2.3", "10.1.2.3", "172.16.0.1", "172.31.255.255", "192.168.1.1",
                            "169.254.169.254", "100.64.0.1", "0.0.0.0", "192.0.0.1", "198.18.0.1", "224.0.0.1",
                            "255.255.255.255", "::1", "::", "fe80::1", "fd00::1", "fc00::1", "ff02::1", "fec0::1",
-                           "::ffff:127.0.0.1", "::ffff:192.168.0.1", "::127.0.0.1", "localhost", "", "8.8.8"})
+                           "::ffff:127.0.0.1", "::ffff:192.168.0.1", "::127.0.0.1", "localhost", "", "8.8.8",
+                           // NAT64 to loopback or the local network, and local-use NAT64 (V4-SEC-5, D38)
+                           "64:ff9b::7f00:1", "64:ff9b::c0a8:101", "64:ff9b:1::808:808"})
         CHECK(!public_ip(ip));
     CHECK(is_ip("10.0.0.1") && is_ip("::1") && !is_ip("example.com") && !is_ip("localhost"));
 }
@@ -1233,10 +1241,16 @@ TEST(wallabag_state_and_library) {
     // The Articles source comes after the book folders.
     Config cfg = parse_config("[library]\nfolder = /books\nremovable_media = no\n", "/home/u");
     StateStore s2;
-    std::vector<LibEntry> root = list_root(cfg, s2, "", "/home/u", "/data/articles");
-    CHECK_EQ(root.size(), 2u);
-    CHECK(root.size() == 2 && root[1].articles && root[1].name == "Articles" && root[1].path == "/data/articles" &&
-          root[1].tag == "Article" && root[1].icon == LibEntry::IconArticles);
+    std::vector<LibEntry> root =
+        list_root(cfg, s2, "", "/home/u",
+                  {{ArticleSource::Wallabag, "/data/articles", "Articles", "Article"},
+                   {ArticleSource::Wikipedia, "/data/wikipedia", "Wikipedia", "Wikipedia"}});
+    CHECK_EQ(root.size(), 3u);
+    CHECK(root.size() == 3 && root[1].articles == ArticleSource::Wallabag && root[1].name == "Articles" &&
+          root[1].path == "/data/articles" && root[1].tag == "Article" && root[1].icon == LibEntry::IconArticles);
+    CHECK(root.size() == 3 && root[2].articles == ArticleSource::Wikipedia && root[2].name == "Wikipedia" &&
+          root[2].tag == "Wikipedia" && root[2].icon == LibEntry::IconWikipedia);
+    CHECK(root[0].articles == ArticleSource::None);
     CHECK_EQ(list_root(cfg, s2, "", "/home/u").size(), 1u);
 
     // Newest first (an article's file date is when it was saved).
@@ -1437,6 +1451,7 @@ TEST(epub_writer) {
         CHECK(read_file(cache + "/metadata.json", saved) && saved.find("42.epub") == std::string::npos);
         CHECK_EQ(info.author, "Ana P\xC3\xA9rez");
         CHECK_EQ(info.language, "es-AR");
+        engine::shutdown(); // the next test starts its own (V4-TEST-1, D38)
     }
 }
 
@@ -1716,14 +1731,21 @@ TEST(wallabag_sync_fake_server) {
     CHECK(z["OEBPS/content.opf"].find("href=\"images/1.png\" media-type=\"image/png\" properties=\"cover-image\"") !=
           std::string::npos);
 
-    // A site that stalls is given up on, not waited for (V3-SEC-3).
+    // A site that stalls is given up on, not waited for (V3-SEC-3); it
+    // answered, so it stalled rather than being unreachable (V4-OPT-2, D38).
     HttpRequest stall;
     stall.url = fake.url() + "/test/stall";
     stall.low_speed_s = 1;
     const uint64_t t0 = mono_ms();
     HttpResponse sr = http_request(stall);
-    CHECK(sr.unreachable && !sr.error.empty());
+    CHECK(sr.stalled && !sr.unreachable && !sr.error.empty());
     CHECK(mono_ms() - t0 < 4000);
+    // Nothing listening: unreachable.
+    HttpRequest nobody;
+    nobody.url = "http://127.0.0.1:9/x";
+    nobody.connect_timeout_s = 2;
+    sr = http_request(nobody);
+    CHECK(sr.unreachable && !sr.stalled);
 
     // In the background thread, waking the caller.
     CHECK(fake.reset(R"({"entries": [{"id": 8, "title": "Eight", "created_at": "2026-11-20T08:00:00Z"}]})"));
@@ -1732,13 +1754,14 @@ TEST(wallabag_sync_fake_server) {
     int wakes = 0;
     SyncWorker worker;
     req.local = {};
-    CHECK(worker.start(req, [&] {
+    auto job = [req](const std::atomic<bool>& c, const SyncProgressFn& pr) { return run_sync(req, c, pr); };
+    CHECK(worker.start(job, [&] {
         std::lock_guard<std::mutex> l(mu);
         wakes++;
         cv.notify_all();
     }));
     CHECK(worker.busy());
-    CHECK(!worker.start(req, nullptr)); // one at a time
+    CHECK(!worker.start(job, nullptr)); // one at a time
     SyncResult wr;
     auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
     while (!worker.take_result(wr) && std::chrono::steady_clock::now() < deadline) {
@@ -1750,6 +1773,453 @@ TEST(wallabag_sync_fake_server) {
     CHECK_EQ(wr.downloaded, 1);
     CHECK(is_file(dir + "/8.epub"));
     CHECK(wakes >= 2);
+}
+
+// --- Wikipedia reading lists (D37) ------------------------------------------------
+
+TEST(wiki_lists_api) {
+    std::vector<WikiList> lists;
+    std::string next;
+    CHECK(parse_wiki_lists(R"({"lists": [{"id": 17895, "name": "default", "default": true},
+        {"id": 17898, "name": " Astronomía ", "default": false}, {"id": -1, "name": "bad"}, {"name": "no id"}],
+        "next": "name|17898", "continue-from": "2026-11-23T00:00:00Z"})",
+                           lists, &next));
+    CHECK_EQ(lists.size(), 2u);
+    CHECK(lists.size() == 2 && lists[0].id == 17895 && lists[0].is_default && lists[0].name == "default");
+    CHECK(lists.size() == 2 && lists[1].name == "Astronomía" && !lists[1].is_default);
+    CHECK_EQ(next, "name|17898");
+    CHECK(parse_wiki_lists(R"({"lists": []})", lists, &next) && lists.empty() && next.empty());
+    CHECK(!parse_wiki_lists(R"({"errorKey": "x"})", lists, &next));
+    CHECK(!parse_wiki_lists("<html>", lists, &next));
+
+    std::vector<WikiEntry> entries;
+    CHECK(parse_wiki_entries(R"({"entries": [
+        {"id": 1, "listId": 7, "project": "https://en.wikipedia.org", "title": "IBM Selectric",
+         "created": "2026-07-27T10:00:00Z", "updated": "2026-07-27T10:00:00Z"},
+        {"id": 2, "listId": 7, "project": "https://en.wikipedia.org", "title": "Gone", "deleted": true},
+        {"id": 3, "listId": 7, "project": "https://en.wikipedia.org", "title": ""},
+        {"id": "4", "title": "x"}], "next": "updated|3"})",
+                             entries, &next));
+    CHECK_EQ(entries.size(), 1u);
+    CHECK(entries.size() == 1 && entries[0].title == "IBM Selectric" && entries[0].list == 7 &&
+          entries[0].project == "https://en.wikipedia.org" && entries[0].created == 1785146400);
+    CHECK_EQ(next, "updated|3");
+    CHECK(!parse_wiki_entries(R"({"lists": []})", entries, &next));
+
+    CHECK_EQ(wiki_error(400, R"({"errorKey": "readinglists-db-error-not-set-up", "httpCode": 400})"),
+             "No reading lists in this Wikipedia account yet: turn on Sync reading lists in the Wikipedia app.");
+    CHECK_EQ(wiki_error(401, R"({"errorKey": "rest-permission-denied-anon"})"),
+             "Wikipedia refused the token (HTTP 401). Check token in [wikipedia] in config.ini.");
+    CHECK_EQ(wiki_error(403, "<html>"), "Wikipedia refused the token (HTTP 403). Check token in [wikipedia] in config.ini.");
+    CHECK_EQ(wiki_error(500, ""), "Wikipedia answered HTTP 500 to the reading lists.");
+    CHECK_EQ(wiki_error(200, "{}"), "Wikipedia's reading lists could not be read.");
+
+    CHECK_EQ(wiki_host("https://en.wikipedia.org"), "en.wikipedia.org");
+    CHECK_EQ(wiki_host("https://ES.Wikipedia.org/"), "es.wikipedia.org");
+    CHECK_EQ(wiki_host("https://zh-min-nan.wikipedia.org"), "zh-min-nan.wikipedia.org");
+    CHECK_EQ(wiki_host("http://en.wikipedia.org"), "");           // https only
+    CHECK_EQ(wiki_host("https://wikipedia.org"), "");
+    CHECK_EQ(wiki_host("https://en.wikipedia.org.evil.example"), "");
+    CHECK_EQ(wiki_host("https://evil.example/x.wikipedia.org"), "");
+    CHECK_EQ(wiki_host("https://en.wikipedia.org:8080"), "");
+    CHECK_EQ(wiki_host("https://user@en.wikipedia.org"), "");
+    CHECK_EQ(wiki_host("https://en.wiktionary.org"), "");
+
+    WikiList saved{1, "default", true}, phys{2, "Física", false};
+    CHECK(wiki_list_wanted(saved, {}) && wiki_list_wanted(phys, {}));
+    CHECK(wiki_list_wanted(saved, {"Saved"}) && !wiki_list_wanted(phys, {"Saved"}));
+    CHECK(wiki_list_wanted(saved, {"default"}));
+    CHECK(wiki_list_wanted(phys, {"Saved", " física "})); // case: ASCII letters only
+    CHECK(wiki_list_wanted(phys, {"Física"}) && !wiki_list_wanted(saved, {"Física"}));
+
+    const int64_t id = wiki_article_id("en.wikipedia.org", "Speed of light");
+    CHECK(id > 0 && id < (int64_t(1) << 53));
+    CHECK_EQ(wiki_article_id("en.wikipedia.org", "Speed_of_light"), id);
+    CHECK(wiki_article_id("es.wikipedia.org", "Speed of light") != id);
+    CHECK(wiki_article_id("en.wikipedia.org", "Speed of Light") != id);
+    CHECK_EQ(article_id(article_file_name(id)), id); // fits the file names
+
+    CHECK_EQ(wiki_title_path("Euler's identity"), "Euler%27s_identity");
+    CHECK_EQ(wiki_title_path("AC/DC"), "AC%2FDC");
+    CHECK_EQ(wiki_title_path("C++"), "C%2B%2B");
+    CHECK_EQ(wiki_title_path("Buenos Aires"), "Buenos_Aires");
+
+    // The newest of each list; each page once, dated when first saved;
+    // the lists with their own, the default one as "Saved", empty ones out.
+    const std::vector<WikiList> wl = {{1, "default", true}, {2, "Física", false}, {3, "Bad", false},
+                                         {4, "  ", false}, {5, "Empty", false}};
+    std::vector<WikiEntry> all = {
+        {1, 1, "https://en.wikipedia.org", "A", 100}, {2, 1, "https://en.wikipedia.org", "B", 300},
+        {3, 2, "https://en.wikipedia.org", "A", 50},  {4, 2, "https://es.wikipedia.org", "A", 200},
+        {5, 3, "https://evil.example", "C", 400},     {6, 4, "https://en.wikipedia.org", "D", 0},
+        {7, 9, "https://en.wikipedia.org", "Not read", 500}};
+    const int64_t a_en = wiki_article_id("en.wikipedia.org", "A"), a_es = wiki_article_id("es.wikipedia.org", "A"),
+                  b = wiki_article_id("en.wikipedia.org", "B"), d = wiki_article_id("en.wikipedia.org", "D");
+    int skipped = 0;
+    WikiShelf shelf = wiki_choose(wl, all, 10, &skipped);
+    CHECK_EQ(skipped, 1);
+    const std::vector<WikiArticle>& chosen = shelf.articles;
+    CHECK_EQ(chosen.size(), 4u);
+    if (chosen.size() == 4) {
+        CHECK(chosen[0].title == "B" && chosen[0].created == 300 && chosen[0].id == b);
+        CHECK(chosen[1].title == "A" && chosen[1].host == "es.wikipedia.org");
+        CHECK(chosen[2].title == "A" && chosen[2].host == "en.wikipedia.org" && chosen[2].created == 50);
+        CHECK(chosen[3].title == "D"); // no date: last
+    }
+    CHECK_EQ(shelf.lists.size(), 3u); // "Bad" has only an entry off Wikipedia, "Empty" none
+    if (shelf.lists.size() == 3) {
+        CHECK(shelf.lists[0].id == 1 && shelf.lists[0].name == "Saved" &&
+              shelf.lists[0].articles == std::vector<int64_t>({b, a_en}));
+        CHECK(shelf.lists[1].name == "Física" && shelf.lists[1].articles == std::vector<int64_t>({a_es, a_en}));
+        CHECK(shelf.lists[2].name == "List 4" && shelf.lists[2].articles == std::vector<int64_t>({d}));
+    }
+    // At most max of each list: A (en) stays, as Física's newest but one.
+    shelf = wiki_choose(wl, all, 1);
+    CHECK_EQ(shelf.articles.size(), 3u); // B (Saved), A es (Física), D
+    CHECK(shelf.lists.size() == 3 && shelf.lists[1].articles == std::vector<int64_t>({a_es}));
+    shelf = wiki_choose({wl[1]}, all, 10);
+    CHECK(shelf.articles.size() == 2 && shelf.lists.size() == 1);
+    CHECK(wiki_choose(wl, {}, 10).articles.empty());
+
+    // The index of lists in the folder, and back.
+    std::vector<ArticleList> back;
+    CHECK(parse_article_lists(article_lists_json(wiki_choose(wl, all, 10).lists), back));
+    CHECK(back.size() == 3 && back[1].name == "Física" && back[1].articles == std::vector<int64_t>({a_es, a_en}));
+    CHECK(parse_article_lists(R"({"lists": [{"id": 1, "name": "x", "articles": [3, -1, "y"]}, {"name": "no id"}]})",
+                              back));
+    CHECK(back.size() == 1 && back[0].articles == std::vector<int64_t>({3}));
+    CHECK(!parse_article_lists("[]", back));
+}
+
+// The Wikipedia shelf: a folder for each list; one list's articles inside
+// it, or right away when there is only one.
+TEST(article_list_folders) {
+    const std::string dir = temp_dir();
+    for (int id : {11, 12, 13})
+        write_file_atomic(dir + "/" + article_file_name(id), "epub");
+    write_file_atomic(dir + "/lists.json", "{}");
+    timespec times[2] = {{1000, 0}, {1000, 0}};
+    utimensat(AT_FDCWD, (dir + "/13.epub").c_str(), times, 0);
+    std::vector<ArticleList> lists = {{1, "Saved", {12, 11}}, {2, "Física", {13, 99}}, {3, "Gone", {98}}};
+    std::vector<LibEntry> v = list_articles(dir, lists, 0);
+    CHECK_EQ(v.size(), 2u); // "Gone" has nothing here
+    if (v.size() == 2) {
+        CHECK(v[0].kind == LibEntry::Folder && v[0].name == "Saved" && v[0].list == 1 && v[0].detail == "2 articles");
+        CHECK(v[1].name == "Física" && v[1].detail == "1 article" && v[1].mtime == 1000);
+        CHECK(v[0].path != v[1].path && !is_dir(v[0].path));
+        CHECK(v[0].mtime > v[1].mtime); // dated by its newest article
+    }
+    v = list_articles(dir, lists, 2);
+    CHECK(v.size() == 1 && v[0].kind == LibEntry::Book && v[0].path == dir + "/13.epub");
+    v = list_articles(dir, lists, 1);
+    CHECK(v.size() == 2 && v[0].path == dir + "/12.epub" && v[1].path == dir + "/11.epub");
+    CHECK(list_articles(dir, lists, 7).empty()); // a list that went away
+    v = list_articles(dir, {lists[0]}, 0); // only one list: its articles
+    CHECK(v.size() == 2 && v[0].kind == LibEntry::Book);
+    CHECK_EQ(list_articles(dir, {}, 0).size(), 3u); // no lists: every article
+}
+
+// A page shaped like Parsoid's (2026-11-23): data-mw with '<' and '>' in it,
+// template styles, boxes for the site, MathML, references, sections.
+static const char* WIKI_PAGE = R"WP(<!DOCTYPE html>
+<html prefix="dc: http://purl.org/dc/terms/ mw: http://mediawiki.org/rdf/"><head prefix="mwr: //en.wikipedia.org/wiki/Special:Redirect/"><meta charset="utf-8"/><meta property="dc:modified" content="2026-11-20T10:00:00Z"/><base href="//en.wikipedia.org/wiki/"/><title>Euler&#39;s identity</title><link rel="stylesheet" href="/w/load.php"/></head>
+<body class="mw-content-ltr sitedir-ltr ltr mw-body-content parsoid-body" lang="en" dir="ltr" data-mw-parsoid-version="0.25.0.0">
+<section data-mw-section-id="0" id="mwAQ"><div class="shortdescription nomobile noexcerpt noprint searchaux" style="display:none">Mathematical equation</div>
+<div role="note" class="hatnote navigation-not-searchable">For other uses, see <a rel="mw:WikiLink" href="./Other">Other</a>.</div>
+<style data-mw-deduplicate="TemplateStyles:r1" typeof="mw:Extension/templatestyles">.infobox{float:right}</style>
+<link rel="mw-deduplicated-inline-style" href="mw-data:TemplateStyles:r1"/>
+<table class="infobox" style="width:22em"><tbody><tr><th colspan="2" style="text-align:center">Euler</th></tr><tr><td><span typeof="mw:File"><a href="./File:A.png" class="mw-file-description"><img src="//upload.wikimedia.org/a-250.png" srcset="//upload.wikimedia.org/a-375.png 1.5x, //upload.wikimedia.org/a-500.png 2x" width="250" height="200" data-file-width="800"/></a></span></td><td><img src="//upload.wikimedia.org/flag.png" width="23" height="15"/></td></tr></tbody></table>
+<p id="mwBg">The <b>identity</b> <math xmlns="http://www.w3.org/1998/Math/MathML" class="mwe-math-element mwe-math-element-inline" display="inline" typeof="mw:Extension/math" data-mw='{"name":"math","body":{"extsrc":"a>b"}}' id="mwEg"><mrow data-mjx-texclass="ORD" id="mwEw"><mi id="x1">e</mi><mo stretchy="false">=</mo><mn>1</mn></mrow></math> links <a rel="mw:WikiLink" href="./Equality_(mathematics)" title="Equality">equality</a> and <a rel="mw:ExtLink" href="https://example.com" class="external text">a site</a>.<sup about="#mwt15" class="mw-ref reference" id="cite_ref-3" typeof="mw:Extension/ref" data-mw='{"name":"ref","body":{"html":"<b>bold</b> & more"}}'><a href="./Euler's_identity#cite_note-3" style="counter-reset: mw-Ref 1;"><span class="mw-reflink-text"><span class="cite-bracket">[</span>1<span class="cite-bracket">]</span></span></a></sup></p>
+<span class="Z3988" title="ctx_ver=Z39.88-2004"></span><p class="mw-empty-elt"></p>
+</section>
+<section data-mw-section-id="1" id="mwA1"><h2 id="History">History &amp; <i>notes</i></h2><p>Text<!-- a comment --> here.</p><script>document.write("<p>no</p>")</script><audio src="x.ogg"><p>no audio</p></audio>
+<section data-mw-section-id="2"><h3 id="Early_years">Early</h3><p>Early text, <a class="mw-selflink selflink">itself</a>.</p></section></section>
+<section data-mw-section-id="3"><h2 id="References">References</h2><div class="mw-references-wrap"><ol class="mw-references references"><li about="#cite_note-3" id="cite_note-3"><span class="mw-cite-backlink"><a href="./Euler's_identity#cite_ref-3" rel="mw:referencedBy"><span class="mw-linkback-text">↑ </span></a></span> <span id="mw-reference-text-cite_note-3" class="mw-reference-text reference-text">A note with <a rel="mw:ExtLink" href="https://doi.org/x">a link</a>.</span></li></ol></div></section>
+<section data-mw-section-id="4"><div class="mw-heading mw-heading2"><h2 id="External_links">External links</h2></div><ul><li><a href="https://x.org">Site X</a></li></ul><div class="navbox" role="navigation"><table><tbody><tr><td>Nav</td></tr></tbody></table></div></section>
+</body></html>)WP";
+
+TEST(wiki_clean) {
+    WikiPage p;
+    CHECK(wiki_clean_page(WIKI_PAGE, p));
+    CHECK_EQ(p.title, "Euler's identity");
+    CHECK_EQ(p.language, "en");
+    CHECK_EQ(p.modified, 1795168800);
+    const std::string& h = p.html;
+    auto has = [&](const char* s) { return h.find(s) != std::string::npos; };
+    // What only the editor or the site uses is gone, with its content.
+    for (const char* gone : {"data-", "<style", "<link", "<meta", "<script", "<audio", "no audio", "<!--", "navbox",
+                             "Nav<", "hatnote", "For other uses", "shortdescription", "Mathematical equation", "Z3988",
+                             "mw-empty-elt", "External links", "Site X", "about=", "typeof=", "rel=", "style=",
+                             "<b>bold</b>", "&amp; more", "\xE2\x86\x91", "flag.png", "a-250.png", "Equality_"})
+        if (h.find(gone) != std::string::npos) {
+            std::printf("  wiki_clean: \"%s\" left in\n", gone);
+            CHECK(false);
+        }
+    // Kept: text, tables, figures, formulas, notes, headings.
+    CHECK(has("The <b>identity</b> "));
+    CHECK(has("<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"inline\"><mrow><mi>e</mi>"
+              "<mo stretchy=\"false\">=</mo><mn>1</mn></mrow></math>"));
+    CHECK(has(" links equality and a site."));
+    CHECK(has("<a href=\"#cite_note-3\" role=\"doc-noteref\">"));
+    CHECK(has("<sup class=\"mw-ref reference\" id=\"cite_ref-3\">"));
+    CHECK(has("<li id=\"cite_note-3\" role=\"doc-endnote\">"));
+    CHECK(has("A note with a link."));
+    CHECK(has("<img src=\"//upload.wikimedia.org/a-500.png\"/>")); // the 2x one
+    CHECK(has("<th colspan=\"2\">Euler</th>"));
+    CHECK(has("<table class=\"infobox\">"));
+    CHECK(has("<h2 id=\"History\">History &amp; <i>notes</i></h2>"));
+    CHECK(has("<p>Text here.</p>"));
+    // The first paragraph comes before the infobox, as on Wikipedia's phones.
+    CHECK(h.find("The <b>identity</b>") < h.find("<table class=\"infobox\">"));
+    CHECK(has("Early text, itself."));
+    // Every element opened is closed: the external links' section too.
+    for (const char* el : {"section", "div", "p", "table", "ol", "li", "a", "sup", "math", "span"}) {
+        size_t open = 0, close = 0;
+        for (size_t at = h.find(std::string("<") + el); at != std::string::npos;
+             at = h.find(std::string("<") + el, at + 1))
+            if (h[at + 1 + std::strlen(el)] == ' ' || h[at + 1 + std::strlen(el)] == '>')
+                open++;
+        for (size_t at = h.find(std::string("</") + el + ">"); at != std::string::npos;
+             at = h.find(std::string("</") + el + ">", at + 1))
+            close++;
+        if (open != close) {
+            std::printf("  wiki_clean: <%s> %zu opened, %zu closed\n", el, open, close);
+            CHECK(false);
+        }
+    }
+    CHECK_EQ(p.toc.size(), 3u);
+    if (p.toc.size() == 3) {
+        CHECK(p.toc[0].id == "History" && p.toc[0].text == "History &amp; notes" && p.toc[0].level == 2);
+        CHECK(p.toc[1].id == "Early_years" && p.toc[1].text == "Early" && p.toc[1].level == 3);
+        CHECK(p.toc[2].id == "References" && p.toc[2].level == 2);
+    }
+    CHECK(!wiki_clean_page("{\"not\": \"a page\"}", p));
+    // A page cut short is closed, and odd markup doesn't stop it.
+    CHECK(wiki_clean_page("<body lang=\"es\"><section><p>Texto <b>a < b", p));
+    CHECK_EQ(p.html, "<section><p>Texto <b>a &lt; b</b></p></section>");
+    CHECK_EQ(p.language, "es");
+    CHECK(wiki_clean_page("<body><p title='a>b' class=x>One</p><p>T&amp;C <img alt=\"x&y\" src=\"a.png\"></p></body>", p));
+    CHECK_EQ(p.html, "<p class=\"x\">One</p><p>T&amp;C <img alt=\"x&amp;y\" src=\"a.png\"/></p>");
+    // Already first, or no text after it: left as it is; nested tables count.
+    CHECK(wiki_clean_page("<body><section><p>Lead</p><table class=\"infobox\"><tr><td>x</td></tr></table></section></body>", p));
+    CHECK_EQ(p.html, "<section><p>Lead</p><table class=\"infobox\"><tr><td>x</td></tr></table></section>");
+    CHECK(wiki_clean_page("<body><section><table class=\"vcard infobox\"><tr><td><table><tr><td><p>in</p></td></tr>"
+                          "</table></td></tr></table><p></p><p>Lead <b>x</b></p></section><section><p>2</p></section></body>",
+                          p));
+    CHECK_EQ(p.html, "<section><p>Lead <b>x</b></p><table class=\"vcard infobox\"><tr><td><table><tr><td><p>in</p></td>"
+                     "</tr></table></td></tr></table><p></p></section><section><p>2</p></section>");
+
+    // The book: title, author, byline, licence, sections.
+    WikiArticle a;
+    a.id = wiki_article_id("en.wikipedia.org", "Euler's identity");
+    a.title = "Euler's identity";
+    a.host = "en.wikipedia.org";
+    a.created = 1785146400; // 27 Jul 2026
+    CHECK(wiki_clean_page(WIKI_PAGE, p));
+    ArticleBook b = wiki_book(a, p);
+    CHECK_EQ(b.title, "Euler's identity");
+    CHECK_EQ(b.author, "Wikipedia");
+    CHECK_EQ(b.language, "en");
+    CHECK_EQ(b.source, "wikipedia");
+    CHECK_EQ(b.url, "https://en.wikipedia.org/wiki/Euler%27s_identity");
+    CHECK_EQ(b.byline, "en.wikipedia.org \xC2\xB7 saved 27 Jul 2026");
+    CHECK(b.html.find("<p class=\"licence\">From Wikipedia, the free encyclopedia (CC BY-SA 4.0), the version of "
+                      "20 Nov 2026.</p>") != std::string::npos);
+    CHECK_EQ(b.toc.size(), 3u);
+
+    // In the EPUB: the sections in the table of contents, h3 inside h2.
+    const std::string dir = temp_dir();
+    write_file_atomic(dir + "/w.epub", make_article_epub(b));
+    std::map<std::string, std::string> z = zip_entries(dir + "/w.epub");
+    const std::string& nav = z["OEBPS/nav.xhtml"];
+    CHECK(nav.find("<li><a href=\"article.xhtml#History\">History &amp; notes</a><ol><li><a "
+                   "href=\"article.xhtml#Early_years\">Early</a></li></ol></li><li><a "
+                   "href=\"article.xhtml#References\">References</a></li></ol>") != std::string::npos);
+    CHECK(z["OEBPS/content.opf"].find(strf("urn:wikipedia:%lld", static_cast<long long>(a.id))) != std::string::npos);
+    CHECK(z["OEBPS/style.css"].find("th, td { border: 1px solid;") != std::string::npos);
+    CHECK(engine::check_book_file(dir + "/w.epub").empty());
+}
+
+// Real pages from Wikipedia, when given (DECKREADER_TEST_WIKI_PAGES: a
+// folder of saved Parsoid HTML, outside the repository). With
+// DECKREADER_TEST_WIKI_OUT, their books (no pictures) are written there.
+TEST(wiki_clean_real_pages) {
+    const char* dir = test_env("DECKREADER_TEST_WIKI_PAGES");
+    if (!dir) {
+        std::printf("wiki_clean_real_pages: skipped (no DECKREADER_TEST_WIKI_PAGES)\n");
+        return;
+    }
+    const char* out = test_env("DECKREADER_TEST_WIKI_OUT");
+    std::vector<DirEntry> files;
+    list_dir(dir, files);
+    int n = 0;
+    for (const DirEntry& f : files) {
+        if (f.is_dir || !ends_with_ci(f.name, ".html"))
+            continue;
+        std::string html;
+        CHECK(read_file(path_join(dir, f.name), html));
+        WikiPage p;
+        const uint64_t t0 = mono_ms();
+        CHECK(wiki_clean_page(html, p));
+        const uint64_t ms = mono_ms() - t0;
+        size_t math_in = 0, math_out = 0, refs = 0;
+        for (size_t at = html.find("<math"); at != std::string::npos; at = html.find("<math", at + 1))
+            math_in++;
+        for (size_t at = p.html.find("<math"); at != std::string::npos; at = p.html.find("<math", at + 1))
+            math_out++;
+        for (size_t at = p.html.find("role=\"doc-noteref\""); at != std::string::npos;
+             at = p.html.find("role=\"doc-noteref\"", at + 1))
+            refs++;
+        std::printf("  %s: %zu KB -> %zu KB in %llu ms; %zu/%zu formulas, %zu note links, %zu sections\n",
+                    f.name.c_str(), html.size() >> 10, p.html.size() >> 10, static_cast<unsigned long long>(ms),
+                    math_out, math_in, refs, p.toc.size());
+        CHECK(!p.title.empty() && !p.language.empty() && p.modified > 0);
+        CHECK(math_out == math_in); // no formula is in a box that goes
+        for (const char* gone : {"data-mw", "<style", "<script", "navbox", "typeof="})
+            CHECK(p.html.find(gone) == std::string::npos);
+        if (out) {
+            WikiArticle a;
+            a.title = p.title;
+            a.host = p.language + ".wikipedia.org";
+            a.id = wiki_article_id(a.host, a.title);
+            ArticleBook b = wiki_book(a, p);
+            b.html = rewrite_html(b.html, "https://" + a.host + "/wiki/x", {});
+            CHECK(write_file_atomic(path_join(out, strip_extension(f.name) + ".epub"), make_article_epub(b)));
+        }
+        n++;
+    }
+    CHECK(n > 0);
+}
+
+TEST(wikipedia_sync_fake_server) {
+    const char* script = test_env("DECKREADER_TEST_FAKE_WIKIPEDIA");
+    if (!script) {
+        std::printf("wikipedia_sync_fake_server: skipped (no DECKREADER_TEST_FAKE_WIKIPEDIA)\n");
+        return;
+    }
+    http_global_init();
+    FakeWallabag fake(script); // the same harness: a script that prints its port
+    CHECK(fake.port > 0);
+    if (fake.port <= 0)
+        return;
+    // Three lists (two a page); entries two a page. A in two lists; D's page
+    // is gone; E isn't on Wikipedia; "Redirect me" leads to Target.
+    CHECK(fake.reset(R"({"lists": [{"id": 1, "name": "default", "default": true}, {"id": 2, "name": "Física"},
+                                   {"id": 3, "name": "Other"}],
+        "entries": {
+            "1": [{"id": 11, "project": "https://en.wikipedia.org", "title": "Alpha", "created": "2026-11-10T08:00:00Z"},
+                  {"id": 12, "project": "https://en.wikipedia.org", "title": "Beta", "created": "2026-11-12T08:00:00Z"},
+                  {"id": 13, "project": "https://es.wikipedia.org", "title": "Buenos Aires", "created": "2026-11-15T08:00:00Z"}],
+            "2": [{"id": 21, "project": "https://en.wikipedia.org", "title": "Alpha", "created": "2026-11-01T08:00:00Z"},
+                  {"id": 22, "project": "https://en.wikipedia.org", "title": "Delta", "created": "2026-11-14T08:00:00Z"}],
+            "3": [{"id": 31, "project": "https://evil.example.org", "title": "Evil", "created": "2026-11-18T08:00:00Z"},
+                  {"id": 32, "project": "https://en.wikipedia.org", "title": "Redirect me", "created": "2026-11-16T08:00:00Z"}]},
+        "pages": ["Alpha", "Beta", "Buenos_Aires", "Target"], "redirects": {"Redirect_me": "Target"}})"));
+    const std::string dir = temp_dir();
+    write_file_atomic(dir + "/777.epub", "left the lists");
+    std::atomic<bool> cancel{false};
+    WikiSyncRequest req;
+    req.settings.token = "tok-wiki";
+    req.settings.max_articles = 10;
+    req.dir = dir;
+    req.local = {777};
+    req.lists_api = fake.url() + "/w/rest.php/readinglists/v0";
+    req.pages_server = fake.url();
+    std::vector<SyncProgress> seen;
+    SyncResult r = run_wiki_sync(req, cancel, [&](const SyncProgress& p) { seen.push_back(p); });
+    CHECK_EQ(r.error, "");
+    CHECK(r.listed);
+    CHECK_EQ(r.unread, 5);     // Redirect me, Buenos Aires, Delta, Beta, Alpha
+    CHECK_EQ(r.downloaded, 4);
+    CHECK_EQ(r.failed, 1);     // Delta: 404
+    CHECK(r.remove == std::vector<int64_t>({777}));
+    CHECK(!seen.empty() && seen.back().phase == SyncProgress::Downloading && seen.back().done == 5);
+    const int64_t alpha = wiki_article_id("en.wikipedia.org", "Alpha");
+    const int64_t ba = wiki_article_id("es.wikipedia.org", "Buenos Aires");
+    const int64_t redirect = wiki_article_id("en.wikipedia.org", "Redirect me");
+    for (int64_t id : {alpha, ba, redirect, wiki_article_id("en.wikipedia.org", "Beta")})
+        CHECK(is_file(dir + "/" + article_file_name(id)));
+    CHECK(!is_file(dir + "/" + article_file_name(wiki_article_id("en.wikipedia.org", "Delta"))));
+    struct stat st{};
+    CHECK(stat((dir + "/" + article_file_name(alpha)).c_str(), &st) == 0 && st.st_mtime == 1793520000); // 1 Nov
+    // The page came without the token; the book has its picture and notes.
+    std::string s = fake.state();
+    CHECK(s.find("\"page_auth\": 0") != std::string::npos);
+    std::map<std::string, std::string> z = zip_entries(dir + "/" + article_file_name(ba));
+    const std::string& page = z["OEBPS/article.xhtml"];
+    CHECK(page.find("lang=\"es\"") != std::string::npos);
+    CHECK(page.find("<img src=\"images/1.png\"") != std::string::npos);
+    CHECK(z.count("OEBPS/images/1.png") == 1);
+    CHECK(z["OEBPS/content.opf"].find("properties=\"cover-image\"") != std::string::npos);
+    CHECK(page.find("role=\"doc-noteref\"") != std::string::npos);
+    CHECK(page.find("<math") != std::string::npos);
+    CHECK(page.find("navbox") == std::string::npos && page.find("External links") == std::string::npos);
+    CHECK(page.find("saved 15 Nov 2026") != std::string::npos);
+    CHECK(zip_entries(dir + "/" + article_file_name(redirect))["OEBPS/article.xhtml"].find("<h1>Target</h1>") !=
+          std::string::npos);
+    // Which list has which, for the library's folders.
+    std::string index;
+    std::vector<ArticleList> folders;
+    CHECK(read_file(dir + "/lists.json", index) && parse_article_lists(index, folders));
+    const int64_t beta = wiki_article_id("en.wikipedia.org", "Beta"),
+                  delta = wiki_article_id("en.wikipedia.org", "Delta");
+    CHECK_EQ(folders.size(), 3u);
+    if (folders.size() == 3) {
+        CHECK(folders[0].name == "Saved" && folders[0].articles == std::vector<int64_t>({ba, beta, alpha}));
+        CHECK(folders[1].name == "Física" && folders[1].articles == std::vector<int64_t>({delta, alpha}));
+        CHECK(folders[2].name == "Other" && folders[2].articles == std::vector<int64_t>({redirect}));
+    }
+
+    // Again: nothing new (Delta still fails).
+    req.local = {alpha, ba, redirect, wiki_article_id("en.wikipedia.org", "Beta")};
+    r = run_wiki_sync(req, cancel, nullptr);
+    CHECK_EQ(r.downloaded, 0);
+    CHECK_EQ(r.failed, 1);
+    CHECK(r.remove.empty());
+
+    // Only "Saved": Redirect me goes (Alpha stays: it is in Saved too).
+    req.settings.lists = {"Saved"};
+    r = run_wiki_sync(req, cancel, nullptr);
+    CHECK_EQ(r.unread, 3);
+    CHECK(r.remove == std::vector<int64_t>({redirect}));
+    CHECK_EQ(r.failed, 0);
+    req.settings.lists = {};
+
+    // The newest of each list only: Buenos Aires, Delta, Redirect me.
+    req.settings.max_articles = 1;
+    r = run_wiki_sync(req, cancel, nullptr);
+    CHECK_EQ(r.unread, 3);
+    CHECK_EQ(r.remove.size(), 2u); // Beta and Alpha
+    req.settings.max_articles = 10;
+
+    // Pictures off: none in the book, and no broken squares.
+    const std::string dir2 = temp_dir();
+    WikiSyncRequest text_only = req;
+    text_only.dir = dir2;
+    text_only.local = {};
+    text_only.settings.images = false;
+    text_only.settings.max_articles = 1;
+    r = run_wiki_sync(text_only, cancel, nullptr);
+    CHECK_EQ(r.downloaded, 2); // and Delta fails
+    z = zip_entries(dir2 + "/" + article_file_name(redirect));
+    CHECK(z["OEBPS/article.xhtml"].find("<img") == std::string::npos);
+    CHECK(z.count("OEBPS/images/1.png") == 0);
+
+    // Refusals and an account without lists.
+    WikiSyncRequest bad = req;
+    bad.settings.token = "wrong";
+    r = run_wiki_sync(bad, cancel, nullptr);
+    CHECK_EQ(r.error, "Wikipedia refused the token (HTTP 401). Check token in [wikipedia] in config.ini.");
+    CHECK(!r.listed);
+    CHECK(fake.reset(R"({"not_set_up": true})"));
+    r = run_wiki_sync(req, cancel, nullptr);
+    CHECK_EQ(r.error,
+             "No reading lists in this Wikipedia account yet: turn on Sync reading lists in the Wikipedia app.");
+    CHECK(!r.listed);
+    // Stopped: nothing listed, nothing removed.
+    cancel = true;
+    r = run_wiki_sync(req, cancel, nullptr);
+    CHECK(r.cancelled && !r.listed);
 }
 
 // --- math in articles (D36) -------------------------------------------------------
@@ -2037,6 +2507,170 @@ TEST(wallabag_sync_math) {
     CHECK_EQ(back.wallabag_format, ARTICLE_FORMAT);
     CHECK(back.from_json("{\"version\": 1, \"books\": {}}"));
     CHECK_EQ(back.wallabag_format, 0);
+}
+
+// --- third audit (ISSUES.md, v0.3.1–v0.4.0; D38) -----------------------------------
+
+TEST(audit_v4_fixes) {
+    WikiPage p;
+    // V4-BUG-2: an infobox whatever its attributes' order; a caption's
+    // paragraph stays in its caption; the lead ends at the first h2.
+    CHECK(wiki_clean_page("<body><section><table lang=\"en\" class=\"infobox vcard\"><tr><td>Box</td></tr></table>"
+                          "<figure><figcaption><p>Caption</p></figcaption></figure><p>Lead</p></section></body>",
+                          p));
+    CHECK_EQ(p.html, "<section><p>Lead</p><table lang=\"en\" class=\"infobox vcard\"><tr><td>Box</td></tr></table>"
+                     "<figure><figcaption><p>Caption</p></figcaption></figure></section>");
+    CHECK(wiki_clean_page("<body><table class=\"infobox\"><tr><td>B</td></tr></table><h2 id=\"H\">H</h2><p>Later</p>"
+                          "</body>",
+                          p));
+    CHECK(p.html.find("<table") < p.html.find("Later"));
+    // V4-BUG-5: a stray end tag inside a dropped box doesn't end it early;
+    // each attribute once; "</scripts>" doesn't end a script.
+    CHECK(wiki_clean_page("<body><div class=\"navbox\"><span>a</p></span><div>b</div></div>"
+                          "<p class=\"a\" class=\"b\">Text</p></body>",
+                          p));
+    CHECK_EQ(p.html, "<p class=\"a\">Text</p>");
+    CHECK(wiki_clean_page("<body><p>A<script>x</scripts>y</script>B</p></body>", p));
+    CHECK_EQ(p.html, "<p>AB</p>");
+    // V4-BUG-9: in-page links other than notes become text; srcset widths.
+    CHECK(wiki_clean_page("<body><p><a href=\"#CITEREFSmith2001\">Smith 2001</a></p>"
+                          "<img srcset=\"//x/a.png 400w, //x/b.png 800w\" src=\"//x/s.png\"/></body>",
+                          p));
+    CHECK_EQ(p.html, "<p>Smith 2001</p><img src=\"//x/b.png\"/>");
+    // V4-BUG-4: "External links" as an h3 inside an h2's section: only the
+    // heading goes, not the section; as a section's own heading, the
+    // section goes and leaves nothing in the contents.
+    CHECK(wiki_clean_page("<body><section><h2 id=\"Links\">Links</h2><p>Kept</p><h3 id=\"External_links\">External "
+                          "links</h3><p>also kept</p></section></body>",
+                          p));
+    CHECK(p.html.find("<h2 id=\"Links\">") != std::string::npos && p.html.find("also kept") != std::string::npos &&
+          p.html.find("External") == std::string::npos);
+    CHECK(p.toc.size() == 1 && p.toc[0].id == "Links");
+    CHECK(wiki_clean_page("<body><section><h2 id=\"External_links\">External links</h2><section><h3 id=\"X\">X</h3>"
+                          "<p>x</p></section></section><p>after</p></body>",
+                          p));
+    CHECK_EQ(p.html, "<p>after</p>");
+    CHECK(p.toc.empty());
+    // V4-SEC-5: a language code doesn't end with a hyphen.
+    CHECK_EQ(wiki_host("https://en-.wikipedia.org"), "");
+
+    // V4-BUG-6: contents that start with h3s list them side by side.
+    ArticleBook b;
+    b.title = "T";
+    b.toc = {{"a", "A", 3}, {"b", "B", 3}, {"c", "C", 2}, {"d", "D", 3}};
+    const std::string dir = temp_dir();
+    write_file_atomic(dir + "/t.epub", make_article_epub(b));
+    CHECK(zip_entries(dir + "/t.epub")["OEBPS/nav.xhtml"].find(
+              "<li><a href=\"article.xhtml#a\">A</a></li><li><a href=\"article.xhtml#b\">B</a></li><li><a "
+              "href=\"article.xhtml#c\">C</a><ol><li><a href=\"article.xhtml#d\">D</a></li></ol></li></ol>") !=
+          std::string::npos);
+
+    // V4-UI-1: only one list has articles here: its articles straight away.
+    write_file_atomic(dir + "/11.epub", "epub");
+    std::vector<LibEntry> v = list_articles(dir, {{1, "Saved", {11}}, {2, "Empty", {99}}}, 0);
+    CHECK(v.size() == 1 && v[0].kind == LibEntry::Book);
+    // V4-UI-2: "lists =" lines add up.
+    Config c = parse_config("[wikipedia]\ntoken = t\nlists = Saved, F\xC3\xADsica\nlists = Other\n", "/h");
+    CHECK(c.wikipedia.lists == std::vector<std::string>({"Saved", "F\xC3\xADsica", "Other"}));
+    // V4-BUG-5 in the TeX finder: "</styles>" doesn't end a style.
+    CHECK(tex_of("<style>a</styles> \\(x\\)</style> \\(y\\)") == std::vector<std::string>({"i:y"}));
+}
+
+TEST(audit_v4_reader_and_wallabag) {
+    // V4-TEST-2: a book marked as read opens at its last screen, with one
+    // page or two per screen (D34).
+    CHECK_EQ(engine::last_screen_page(13, 1), 12);
+    CHECK_EQ(engine::last_screen_page(13, 2), 12); // pages 12 (and an empty right)
+    CHECK_EQ(engine::last_screen_page(12, 2), 10); // pages 10-11
+    CHECK_EQ(engine::last_screen_page(12, 1), 11);
+    CHECK_EQ(engine::last_screen_page(1, 2), 0);
+    CHECK_EQ(engine::last_screen_page(0, 2), 0);
+    CHECK_EQ(engine::last_screen_page(5, 0), 4);
+
+    // V4-BUG-3 for wallabag: a rebuild that misses an article is done again.
+    const char* script = test_env("DECKREADER_TEST_FAKE_WALLABAG");
+    if (!script)
+        return;
+    http_global_init();
+    FakeWallabag fake(script);
+    if (fake.port <= 0)
+        return;
+    CHECK(fake.reset(R"({"entries": [{"id": 4, "title": "Four", "created_at": "2026-11-18T08:00:00+0100"},
+                                    {"id": 5, "title": "Five", "created_at": "2026-11-19T08:00:00+0100"}],
+                        "broken": [4]})"));
+    std::atomic<bool> cancel{false};
+    SyncRequest req;
+    req.settings = WallabagSettings{fake.url(), "cid", "secret", "reader", "pa ss&w\xC3\xB6rd=1+2%", 10};
+    req.dir = temp_dir();
+    req.local = {4, 5};
+    req.rebuild = true;
+    SyncResult r = run_sync(req, cancel, nullptr);
+    CHECK(r.failed == 1 && r.redo);
+    req.rebuild = false;
+    r = run_sync(req, cancel, nullptr);
+    CHECK(!r.redo);
+}
+
+TEST(audit_v4_sync) {
+    const char* script = test_env("DECKREADER_TEST_FAKE_WIKIPEDIA");
+    if (!script) {
+        std::printf("audit_v4_sync: skipped (no DECKREADER_TEST_FAKE_WIKIPEDIA)\n");
+        return;
+    }
+    http_global_init();
+    FakeWallabag fake(script);
+    CHECK(fake.port > 0);
+    if (fake.port <= 0)
+        return;
+    // V4-BUG-1: a page of tombstones is followed by more; a "next" that
+    // comes round again ends the list, and then nothing is removed.
+    CHECK(fake.reset(R"({"lists": [{"id": 1, "name": "default", "default": true}, {"id": 2, "name": "Loop"}],
+        "entries": {
+            "1": [{"id": 11, "project": "https://en.wikipedia.org", "title": "Gone 1", "created": "2026-11-01T08:00:00Z", "deleted": true},
+                  {"id": 12, "project": "https://en.wikipedia.org", "title": "Gone 2", "created": "2026-11-02T08:00:00Z", "deleted": true},
+                  {"id": 13, "project": "https://en.wikipedia.org", "title": "Alpha", "created": "2026-11-03T08:00:00Z"}],
+            "2": [{"id": 21, "project": "https://en.wikipedia.org", "title": "Beta", "created": "2026-11-04T08:00:00Z"}]},
+        "pages": ["Alpha", "Beta"], "cycle": [2]})"));
+    const std::string dir = temp_dir();
+    write_file_atomic(dir + "/777.epub", "not in the lists read");
+    std::atomic<bool> cancel{false};
+    WikiSyncRequest req;
+    req.settings.token = "tok-wiki";
+    req.dir = dir;
+    req.local = {777};
+    req.lists_api = fake.url() + "/w/rest.php/readinglists/v0";
+    req.pages_server = fake.url();
+    SyncResult r = run_wiki_sync(req, cancel, nullptr);
+    CHECK_EQ(r.error, "");
+    CHECK_EQ(r.downloaded, 2); // Alpha after the tombstones, and Beta
+    CHECK(r.remove.empty());   // the looping list wasn't read to its end
+    CHECK(is_file(dir + "/" + article_file_name(wiki_article_id("en.wikipedia.org", "Alpha"))));
+
+    // V4-BUG-8: the first picture is an SVG: the cover is the next one.
+    CHECK(fake.reset(R"({"lists": [{"id": 1, "name": "default", "default": true}],
+        "entries": {"1": [{"id": 11, "project": "https://en.wikipedia.org", "title": "Svg first", "created": "2026-11-03T08:00:00Z"}]},
+        "pages": ["Svg_first"]})"));
+    req.local = {};
+    r = run_wiki_sync(req, cancel, nullptr);
+    CHECK_EQ(r.downloaded, 1);
+    std::map<std::string, std::string> z =
+        zip_entries(dir + "/" + article_file_name(wiki_article_id("en.wikipedia.org", "Svg first")));
+    CHECK(z.count("OEBPS/images/1.svg") == 1);
+    CHECK(z["OEBPS/content.opf"].find("href=\"images/2.png\" media-type=\"image/png\" properties=\"cover-image\"") !=
+          std::string::npos);
+
+    // V4-BUG-3: a rebuild that misses an article is done again next time.
+    req.local = {wiki_article_id("en.wikipedia.org", "Svg first"), wiki_article_id("en.wikipedia.org", "Gone")};
+    CHECK(fake.reset(R"({"lists": [{"id": 1, "name": "default", "default": true}],
+        "entries": {"1": [{"id": 11, "project": "https://en.wikipedia.org", "title": "Svg first", "created": "2026-11-03T08:00:00Z"},
+                          {"id": 12, "project": "https://en.wikipedia.org", "title": "Gone", "created": "2026-11-04T08:00:00Z"}]},
+        "pages": ["Svg_first"]})"));
+    req.rebuild = true;
+    r = run_wiki_sync(req, cancel, nullptr);
+    CHECK(r.rebuilt == 1 && r.failed == 1 && r.redo);
+    req.rebuild = false;
+    r = run_wiki_sync(req, cancel, nullptr);
+    CHECK(!r.redo);
 }
 
 int main() {

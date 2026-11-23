@@ -29,7 +29,7 @@ static std::string tilde(const std::string& path, const std::string& home) {
 }
 
 std::vector<LibEntry> list_root(const Config& cfg, StateStore& state, const std::string& mountinfo_text,
-                                const std::string& home, const std::string& articles_dir) {
+                                const std::string& home, const std::vector<ArticleRoot>& articles) {
     std::vector<LibEntry> out;
     for (const std::string& folder : cfg.folders) {
         LibEntry e;
@@ -42,14 +42,14 @@ std::vector<LibEntry> list_root(const Config& cfg, StateStore& state, const std:
         e.tag = "Local";
         out.push_back(e);
     }
-    if (!articles_dir.empty()) {
+    for (const ArticleRoot& a : articles) {
         LibEntry e;
         e.kind = LibEntry::Source;
-        e.path = articles_dir;
-        e.name = "Articles";
-        e.icon = LibEntry::IconArticles;
-        e.articles = true;
-        e.tag = "Article";
+        e.path = a.dir;
+        e.name = a.name;
+        e.icon = a.source == ArticleSource::Wikipedia ? LibEntry::IconWikipedia : LibEntry::IconArticles;
+        e.articles = a.source;
+        e.tag = a.tag;
         out.push_back(e); // its second line is the sync status (library_screen.cpp)
     }
     if (cfg.removable_media) {
@@ -125,6 +125,51 @@ std::vector<LibEntry> list_folder(const std::string& dir) {
         out.push_back(e);
     }
     return out;
+}
+
+std::vector<LibEntry> list_articles(const std::string& dir, const std::vector<ArticleList>& lists, int64_t list) {
+    std::vector<LibEntry> files = list_folder(dir);
+    if (lists.empty())
+        return files;
+    std::map<int64_t, const LibEntry*> by_id;
+    for (const LibEntry& f : files)
+        if (f.kind == LibEntry::Book)
+            if (int64_t id = article_id(path_basename(f.path)))
+                by_id[id] = &f;
+    // The articles of a list that are here, in its order.
+    auto here = [&](const ArticleList& l) {
+        std::vector<LibEntry> out;
+        for (int64_t id : l.articles)
+            if (auto it = by_id.find(id); it != by_id.end())
+                out.push_back(*it->second);
+        return out;
+    };
+    if (list) {
+        for (const ArticleList& l : lists)
+            if (l.id == list)
+                return here(l);
+        return {}; // that list is gone
+    }
+    // A folder for each list with articles here; just one: its articles
+    // straight away (V4-UI-1, D38).
+    std::vector<LibEntry> folders;
+    const ArticleList* only = nullptr;
+    for (const ArticleList& l : lists) {
+        const std::vector<LibEntry> in = here(l);
+        if (in.empty())
+            continue;
+        only = &l;
+        LibEntry e;
+        e.kind = LibEntry::Folder;
+        e.name = l.name;
+        e.list = l.id;
+        e.path = path_join(dir, strf("#list-%lld", static_cast<long long>(l.id))); // unique, never opened
+        for (const LibEntry& b : in)
+            e.mtime = std::max(e.mtime, b.mtime);
+        e.detail = in.size() == 1 ? std::string("1 article") : strf("%zu articles", in.size());
+        folders.push_back(e);
+    }
+    return folders.size() == 1 ? here(*only) : folders;
 }
 
 std::string display_title(const LibEntry& e, const BookMeta* m) {

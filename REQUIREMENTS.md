@@ -157,6 +157,12 @@ The Steam and "…" buttons stay with Steam. Keyboard keys match `DeckVideoPlaye
   in wallabag from the Deck. Account details in `config.ini`; nothing
   shown until they are set; the network used only on request.
 
+- **Wikipedia reading lists** (v0.4, D37): the articles saved in the
+  Wikipedia apps (any reading list), made into EPUBs on the Deck with
+  their pictures, formulas, references and sections into a Wikipedia
+  source on request (a folder for each list), read offline like books. A personal read-only token
+  in `config.ini`; no wallabag account needed.
+
 - Support **OPDS (Open Publication Distribution System)** feeds—the open standard supported by self-hosted servers (Calibre-web, Kavita, Komga)—using simple HTTP/HTTPS + Basic/Token authentication. Credentials are first entered in `config.ini` (as `DeckVideoPlayer` does for its OpenSubtitles key): the Steam on-screen keyboard cannot be reliably opened by a non-Steam application. A controller-driven on-screen keyboard may follow, built so `DeckVideoPlayer` can reuse it (its roadmap needs a first text field too).
 - **Offline Download Manager:** Download remote `.epub` files directly into the local library folder with progress feedback so books remain 100% readable offline.
 

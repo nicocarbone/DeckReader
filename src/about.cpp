@@ -135,6 +135,9 @@ std::unique_ptr<Menu> make_about_menu(App& app) {
     row("Articles (wallabag)", app.articles->about());
     if (app.articles->configured())
         row("Articles folder", short_path(app.articles->dir(), home));
+    row("Wikipedia", app.wikipedia->about());
+    if (app.wikipedia->configured())
+        row("Wikipedia folder", short_path(app.wikipedia->dir(), home));
     row("Settings", short_path(path_join(app.paths.config_dir, "config.ini"), home));
     row("Reading data", short_path(app.paths.data_dir, home));
     row("Cache", short_path(app.paths.cache_dir, home));

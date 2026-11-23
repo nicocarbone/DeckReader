@@ -56,7 +56,8 @@ EXTRA_CONFIG=.dev/wallabag.ini tools/headless-run.sh -- "idle; key:down; key:y; 
 `tests/fake-wallabag.py` started on the host (`python3
 tests/fake-wallabag.py` prints its port; `POST /test/reset` sets the
 articles, `"delay": 1.5` slows downloads to see the progress). Keep files
-with real credentials in `.dev/`.
+with real credentials in `.dev/`; the same for a `[wikipedia]` token (add
+`max_articles = 5` after it for a quick run).
 
 Script commands are documented in `src/testscript.h` (`key:`, `stick:`,
 `tap:`, `wait:`, `idle`, `shot:`, `quit`); one runs per frame. The run uses
@@ -97,6 +98,15 @@ published (copyrighted books).
   engine can't show, never sent the token, none from this device unless
   it is the wallabag server, a bad address, more than 60, a stalling
   site).
+- The Wikipedia sync (D37) against `tests/fake-wikipedia.py`, the same
+  way: lists and entries in pages, a list chosen by name, a page gone, a
+  redirect, a host that isn't Wikipedia, pictures on and off, a refused
+  token, an account without lists, stopping, and no token on page
+  requests. The cleaning of Parsoid's HTML on a generated page; with
+  pages saved into `.dev/wiki-pages/` (`curl -A "..."
+  https://en.wikipedia.org/w/rest.php/v1/page/TITLE/html`, not in the
+  repository), on those real pages too (`DECKREADER_TEST_WIKI_OUT=dir`
+  writes their books, when running `.dev/build/unit_tests` by hand).
 - `tests/test_steam_shortcut.py` against a fake `HOME`.
 - Consistency checks: the version in `CMakeLists.txt` has a metainfo
   `<release>` and a `CHANGELOG.md` section; manifest patches exist.

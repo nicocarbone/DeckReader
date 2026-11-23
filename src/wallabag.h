@@ -9,29 +9,19 @@
 // made here (epubwrite.h), with the pictures downloaded from their sites:
 // wallabag's own export leaves them as links (seen on wallabag.it 2.6.17).
 //
-// A sync runs in one background thread (SyncWorker); it never touches the
-// app's state: it gets everything it needs in a SyncRequest and reports a
-// SyncResult that the main thread applies (articles.cpp).
+// The sync thread, the plan, the pictures and saving are shared with the
+// Wikipedia articles (articlesync.h).
 #pragma once
 
+#include "articlesync.h"
 #include "config.h"
-#include "epubwrite.h"
 
 #include <atomic>
 #include <cstdint>
-#include <functional>
-#include <mutex>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace dr {
-
-struct WallabagEntry {
-    int64_t id = 0;
-    std::string title;
-    int64_t created = 0; // saved in wallabag, seconds since the epoch (0 = unknown)
-};
 
 // One article, as GET /api/entries/{id}.json gives it.
 struct WallabagArticle {
@@ -55,28 +45,13 @@ std::string parse_token(const std::string& body);
 std::string token_error(long status, const std::string& body, const std::string& location);
 // One page of the unread list, and how many pages there are. False if the
 // answer isn't one.
-bool parse_entries(const std::string& body, std::vector<WallabagEntry>& out, int* pages = nullptr);
+bool parse_entries(const std::string& body, std::vector<ArticleEntry>& out, int* pages = nullptr);
 // One article. False if the answer isn't one.
 bool parse_article(const std::string& body, WallabagArticle& out);
 // The book for an article, without pictures yet: title, author (its
 // authors, else its site), language, the title line under the heading
 // ("Ana Pérez · example.com · 27 Mar 2009 · 2 min read") and the HTML.
 ArticleBook article_book(const WallabagArticle& a);
-// Articles are stored as "<id>.epub".
-std::string article_file_name(int64_t id);
-// The id of an article file name; 0 if the name isn't one.
-int64_t article_id(const std::string& name);
-
-struct SyncPlan {
-    std::vector<WallabagEntry> download; // unread, not on the Deck yet (or all, to rebuild)
-    std::vector<int64_t> remove;         // on the Deck, no longer unread
-};
-// Articles waiting to be archived are neither downloaded again nor kept.
-// `rebuild`: the unread articles already on the Deck are downloaded again
-// (made by an older version, ARTICLE_FORMAT).
-SyncPlan plan_sync(const std::vector<WallabagEntry>& unread, const std::vector<int64_t>& local,
-                   const std::vector<int64_t>& archive, bool rebuild = false);
-
 // What the article EPUBs hold, by version: 1 = text and pictures (0.3.0),
 // 2 = math as MathML (0.3.2, D36). Articles made with an older format are
 // looked at again at the next update (state.json keeps the format): their
@@ -97,48 +72,9 @@ struct SyncRequest {
     std::string temml_js;         // temml.min.js: TeX becomes MathML (D36); "" = no math
 };
 
-struct SyncProgress {
-    enum Phase { Starting, Archiving, Listing, Downloading } phase = Starting;
-    int done = 0, total = 0;
-};
-
-struct SyncResult {
-    std::string error;             // "" when everything worked
-    bool cancelled = false;
-    std::vector<int64_t> archived; // archived on the server (or gone there)
-    bool listed = false;           // the unread list came: `remove` is valid
-    std::vector<int64_t> remove;   // local articles no longer unread
-    int unread = 0;                // in the list (at most max_articles)
-    int downloaded = 0, failed = 0;
-    int rebuilt = 0;               // local articles made again (rebuild)
-    bool update = true;
-};
-
-// The whole sync, in the calling thread. Writes new articles into req.dir
-// (atomically, as "<id>.epub", dated when they were saved); removes nothing.
-SyncResult run_sync(const SyncRequest& req, const std::atomic<bool>& cancel,
-                    const std::function<void(const SyncProgress&)>& progress);
-
-// One sync at a time in a background thread. `wake` is called from that
-// thread on progress and when it is done (the app pushes an SDL event).
-class SyncWorker {
-public:
-    ~SyncWorker(); // cancels and waits
-    bool start(SyncRequest req, std::function<void()> wake);
-    bool busy() const;
-    SyncProgress progress() const;
-    // The result, once, after the thread finished. False until then.
-    bool take_result(SyncResult& out);
-    void cancel() { cancel_ = true; }
-
-private:
-    std::thread thread_;
-    mutable std::mutex mu_;
-    bool running_ = false;  // started, result not taken yet
-    bool finished_ = false; // the thread is done
-    SyncProgress progress_;
-    SyncResult result_;
-    std::atomic<bool> cancel_{false};
-};
+// The whole sync, in the calling thread (a SyncWorker's job). Writes new
+// articles into req.dir (atomically, as "<id>.epub", dated when they were
+// saved); removes nothing.
+SyncResult run_sync(const SyncRequest& req, const std::atomic<bool>& cancel, const SyncProgressFn& progress);
 
 } // namespace dr

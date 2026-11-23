@@ -34,6 +34,8 @@ scripts/sdk-run.sh env \
     DECKREADER_TEST_FONTS="$root/.dev/app/share/deckreader/fonts" \
     DECKREADER_TEST_ENGINE_DATA="$root/.dev/prefix/share/crengine-ng" \
     DECKREADER_TEST_FAKE_WALLABAG="$here/fake-wallabag.py" \
+    DECKREADER_TEST_FAKE_WIKIPEDIA="$here/fake-wikipedia.py" \
+    DECKREADER_TEST_WIKI_PAGES="$( [ -d "$root/.dev/wiki-pages" ] && echo "$root/.dev/wiki-pages" )" \
     DECKREADER_TEST_TEMML="$root/.dev/app/share/deckreader/js/temml.min.js" \
     .dev/build/unit_tests > "$log" 2>&1 || status=$?
 grep -v -E '^[0-9/]+ [0-9:.]+ (WARN|ERROR) ' "$log" || true

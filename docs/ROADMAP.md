@@ -65,10 +65,30 @@ Web articles saved on the phone with [wallabag](https://wallabag.org)
 - Later, with a sample of what wallabag keeps: MathML already in a page
   (KaTeX rendered on the server) and MathJax 2's `<script type="math/tex">`.
 
-## v0.3.x: reading comfort
+## v0.4.0: Wikipedia reading lists (released 2026-11-23)
+
+The articles saved in the Wikipedia apps (the "Saved" list and any other
+reading list), made into EPUBs on the Deck and read offline like the
+wallabag articles (D37). Tried with the owner's account and confirmed on
+the owner's Steam Deck (test bundles v0.4.0-test1 to test3); third audit
+reviewed (D38).
+
+- A Wikipedia source after Articles, a folder for each reading list;
+  "Update articles" (and Y on either row) updates both.
+- The article's HTML from Wikipedia itself: formulas as MathML (drawn
+  since v0.3.2), references kept as notes, navigation boxes and editor
+  data removed, links to other articles as plain text.
+- The sync thread, the pictures and the EPUB shared with wallabag (and
+  with the feeds of v0.5).
+- Later: the display title ("iPhone", not "IPhone"), one Action API
+  request per wiki; a redirect's section (an article saved through a
+  redirect opens at the top of its target).
+
+## Reading comfort (after v0.4.0)
 
 - Footnotes in a popup (links followed with the controller): designed
-  in D35, next (v0.3.3).
+  in D35, right after Wikipedia; its references are marked as notes from
+  the start (D37).
 - Fallback fonts for CJK, Arabic and Hebrew text (Noto subsets; D9).
 - Optional dyslexia-oriented font (OpenDyslexic).
 - "Open with" from Desktop Mode: quit after closing the book
@@ -76,7 +96,7 @@ Web articles saved on the phone with [wallabag](https://wallabag.org)
 - Book info: series, description; delete or hide a book.
 - More formats crengine already reads: FB2, MOBI (no DRM), TXT.
 
-## v0.4: newsletters and blogs by feed
+## v0.5: newsletters and blogs by feed
 
 Posts from RSS and Atom feeds (Substack and Ghost newsletters, blogs,
 news sites) made into EPUBs on the Deck and read offline like the
@@ -107,7 +127,7 @@ the EPUB builder, the picture downloads, the articles thread.
   Atom samples, including broken and hostile ones.
 - Later: OPML import (the list of feeds from another reader).
 
-## v0.5: OPDS catalogues (requirements 6.2)
+## v0.6: OPDS catalogues (requirements 6.2)
 
 - OPDS feeds from Calibre-web, Kavita, Komga: browse, search, download
   into the library folder with progress; read offline.

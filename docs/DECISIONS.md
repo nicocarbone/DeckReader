@@ -978,3 +978,269 @@ none left out, about 14 s.
   - MathJax 2's `<script type="math/tex">`.
   - Both wait for a sample of what wallabag keeps of them (it removes
     scripts).
+
+## D37. Wikipedia reading lists (v0.4.0)
+
+- **What:** the articles saved in the Wikipedia apps (the bookmark, which
+  fills the "Saved" list, and any other reading list) appear in the
+  library as a **Wikipedia** source after Articles. They are made into
+  EPUBs on the Deck with their pictures and read offline like the
+  wallabag articles (D31). Saving happens on the phone; the Deck only
+  downloads. It needs no wallabag account: either source works alone.
+  The apps keep the lists in the Wikipedia account when signed in with
+  "Sync reading lists" on. Considered: sharing Wikipedia pages to
+  wallabag, which works with no new code (the fallback); but the reading
+  lists are where the Wikipedia apps save, and Wikipedia's own HTML keeps
+  the formulas as MathML and the references as notes.
+- **API**, read in the ReadingLists extension's source (master,
+  2026-11-23):
+  - One set of lists per account, for every language:
+    `GET https://meta.wikimedia.org/w/rest.php/readinglists/v0/lists`
+    (id, name, default, description, created, updated; 10 a page, then
+    `next`) and `GET …/lists/{id}/entries` (id, listId, project such as
+    `https://es.wikipedia.org`, title, created, updated; up to 100 a
+    page, then `next`; asked newest first).
+  - Reading needs a signed-in user with the `viewmyprivateinfo` right;
+    GETs need no CSRF token. An account that never synced answers
+    `readinglists-db-error-not-set-up`, shown as "No reading lists in
+    this Wikipedia account yet: turn on Sync reading lists in the
+    Wikipedia app."
+  - Risk: the Action API module calls itself internal and experimental;
+    the REST routes moved out of RESTBase in 2025 (T336693). The
+    official apps depend on them, so a change would be announced, but
+    the API is less settled than wallabag's. The client stays small and
+    its errors say what failed.
+- **Signing in: a personal OAuth 2 token** (an "owner-only consumer"),
+  registered once by the user on meta.wikimedia.org with only the "Access
+  private information" grant (`privateinfo`, which carries
+  `viewmyprivateinfo`): read-only. It needs no review, never expires and
+  works only for its owner. It is sent (`Authorization: Bearer`) only to
+  meta.wikimedia.org's reading-list routes; articles and pictures are
+  fetched without it (the fake server's tests check that no page request
+  carries it). Considered: a bot password (Special:BotPasswords), which
+  needs a login, cookies and tokens, and puts a password in the file.
+  Tried with the owner's account (2026-11-23): 16 lists, 245 entries.
+- **Settings:** `[wikipedia]` in `config.ini`: `token`, `max_articles`
+  (the newest saved of each list, default 50), `images` (yes), `lists`
+  (names to sync; "Saved" or "default" is the app's own list; empty: all,
+  the owner's choice). Nothing appears until the token is set; it never appears in
+  the log. The template and docs/CONFIGURATION.md have the steps to make
+  the token.
+- **The article:** `GET https://{project}/w/rest.php/v1/page/{title}/html`
+  (Parsoid's HTML), without the token; a redirect is followed to its
+  target. Only `https://xx.wikipedia.org` projects: the list comes from
+  the server but is input, and an entry naming another host is skipped
+  and logged. At most 8 MB of HTML.
+  - What it holds (samples, 2026-11-23: Euler's identity, Speed of
+    light, and Buenos Aires in Spanish, 0.13–1.4 MB): sections, figures
+    with `srcset`, formulas as native MathML (Wikipedia's default since
+    2026; no images), references as `<sup class="mw-ref">` links to
+    `<ol class="mw-references">` (227 and 404 on the long pages), and
+    much for the editor only: `data-mw` attributes (up to 215 KB, with
+    `<` and `>` inside quotes), template `<style>`s, navigation boxes.
+  - Cleaning (`wiki_clean_page`, a tag walker that respects quotes):
+    the three pages keep a quarter of their size (128 → 30, 1033 → 219,
+    1422 → 413 KB) in at most 6 ms, every formula and every note.
+  - Kept: text, headings, infoboxes and tables (with borders: lines
+    without a colour follow the theme since D36), figures and captions,
+    formulas (drawn with STIX, D36), notes and references.
+  - Removed: `data-*`, `style`, `about`, `typeof` and the other
+    editor's attributes; `<style>`, `<link>`, `<meta>`, scripts, audio
+    and video; navigation boxes, sidebars, maintenance banners, hatnotes,
+    coordinates, authority control, hidden, "noprint" and "nomobile"
+    elements (what Wikipedia itself hides on phones), edit links,
+    reference back-links, and the "External links" section (by its
+    heading, in the main languages).
+  - Links to other articles and to the web become plain text: there are
+    hundreds a page and nothing to follow offline. Reference links
+    become `#cite_note-N` inside the book, marked `role="doc-noteref"`,
+    and the references `role="doc-endnote"`: D35 recognises both, so
+    footnotes will show them in its panel with no new download, and the
+    right stick will visit only notes. ARIA roles rather than
+    `epub:type`, which crengine may style or hide on its own.
+  - The first paragraph goes before the infobox, as on Wikipedia's
+    phone pages: the book starts with text, not with a screen of table.
+  - Pictures: D31's code and limits (60 an article, size and time
+    limits), from Wikimedia's servers, the densest picture of `srcset`
+    (2×: 500 px for a 250 px figure). Icons with both sides under 48 px
+    (flags in tables) are left out: Buenos Aires has 297 `<img>`. The
+    cover is the article's first picture.
+  - The book: the page's title; a line "en.wikipedia.org · saved 27 Jul
+    2026"; the article; then "From Wikipedia, the free encyclopedia (CC
+    BY-SA 4.0), the version of …" and the address (the licence asks for
+    attribution). Author in the library: Wikipedia. Language from the
+    page (hyphenation). The h2 and h3 headings are the book's contents
+    (chapters for the D-pad and the progress line): 51 on "ARM
+    architecture family". `ArticleBook` gained the contents, extra CSS
+    and the identifier's scheme (`urn:wikipedia:`).
+- **A symbol font for every book:** STIX Two Math is now the last
+  fallback font, after Literata and Inter: "m⋅s⁻¹" on Speed of light
+  showed "m?s" (Literata has no U+22C5). It covers math operators and
+  arrows in any book's text.
+- **Storage:** `<data>/deckreader/wikipedia/<id>.epub`; the id is a hash
+  of the wiki and the title (53 bits, so the name stays an article
+  number), so an article in several lists is one file, dated when it was
+  first saved, and keeps its name when it moves between lists.
+- **A folder for each list** (asked by the owner after test1; first, all
+  lists went into one folder): the sync writes `lists.json` in the
+  Wikipedia folder (`articlesync.h`: each list's id, name and articles,
+  newest first) right after listing, so the folders fill as articles
+  arrive. The library shows the source's folder through it
+  (`list_articles`): with several lists, a folder each ("Saved" for the
+  default list, then the user's names; "12 articles"; dated by its
+  newest article, so "Sorted by newest" puts the list saved to last
+  first; lists with nothing on the Deck left out); in a list, its
+  articles; with one list, its articles straight away. The folders are
+  virtual: an article in two lists is one file, with one reading
+  position, shown in both. Real folders would have meant two copies and
+  two positions. The format is the source's, not Wikipedia's: feeds
+  (v0.5) can use it for a folder per feed.
+- **Sync** as in D31: the newest `max_articles` entries of each list
+  read (per list since the folders: a total of 50 would have left the
+  owner's 2018 topic lists empty, behind 2026's "Saved"); new ones
+  downloaded; ones no longer in them removed (not the one being read).
+  With the owner's 16 lists and 2 each: 30 articles, all downloaded. An article is not downloaded again when Wikipedia changes
+  it: the Deck keeps the version it got (a format number, like D36's,
+  can remake them all).
+- **Mark as read** (the owner's choice): the token is read-only, so the
+  Deck never changes the lists. "Mark as read" (D34) puts the check mark;
+  the article leaves the Deck when it is removed from its list on the
+  phone.
+- **Library:** the Wikipedia source after Articles, with its own icon
+  (the articles' page with a "W" cut out, in the interface font, not
+  Wikipedia's logo), its lists newest first ("16 lists"); its row says "Reading lists · 5
+  articles · updated today 11:31" or how its update is going; recent
+  books from it are tagged "Wikipedia". "Update articles" in the menu
+  and Y on either row update every source that is set up, at the same
+  time, one thread each (they use different servers); with both set up,
+  their messages start with "wallabag:" or "Wikipedia:".
+- **HTTP:** Wikimedia's User-Agent policy asks clients to name
+  themselves and how to reach their author, and blocks generic ones.
+  From this version every request sends `DeckReader/<version>
+  (https://github.com/nicocarbone/DeckReader)`: the project's public
+  page, nothing about the user. One request at a time per source.
+- **Code:** what wallabag and Wikipedia share moved out of `wallabag.cpp`
+  into `articlesync.*`: the entries and the plan, the pictures, saving
+  the book, and the thread (`SyncWorker` now runs any job). `Articles`
+  serves either source. The feeds of v0.5 will be a third.
+- **Tests:** the lists and entries answers, paging, errors, the project
+  check, the ids, the choice of articles, the cleaning on a page shaped
+  like Parsoid's (and, with `DECKREADER_TEST_WIKI_PAGES`, on real saved
+  pages outside the repository), the contents in the EPUB; the whole sync
+  against `tests/fake-wikipedia.py` (paging, a list chosen by name, a
+  page gone, a redirect, a host that isn't Wikipedia, pictures off, a
+  refused token, an account without lists, stopping).
+- **Tried with the owner's account** (2026-11-23, headless, no wallabag
+  set up): the 5 newest of 245 entries, 247–1047 KB of HTML each, 46
+  pictures, in about 18 s; screenshots at 1280×800 and 4K.
+- **Confirmed on the owner's Steam Deck** (2026-11-23, test bundles
+  v0.4.0-test1 to test3); released in v0.4.0.
+- **Not now:**
+  - The display title: Parsoid's HTML has the page's name ("IPhone 3G"),
+    not how Wikipedia shows it ("iPhone 3G"). One Action API request per
+    wiki (`prop=info&inprop=displaytitle`) would give them all.
+  - An article saved through a redirect to a section ("300-page iPhone
+    bill" → "IJustine") opens at the top of the target page.
+
+## D38. Third audit (ISSUES.md, Gemini, v0.3.1–v0.4.0) reviewed
+
+Every item was checked against the code, the build and the libraries
+before acting; 1177 unit checks after (1127 before). The three saved
+Wikipedia pages still clean to the same sizes, every formula and note
+kept, each starting with its text.
+
+**Fixed**
+
+- **V4-SEC-1**: API calls (wallabag, the reading lists) and Wikipedia
+  pages give up below 1 KB/s for 30 s, as pictures do (15 s): a stalled
+  connection no longer holds an update for one or two minutes. 30, not
+  15: Parsoid can take seconds to render a long page it hasn't cached.
+- **V4-SEC-2** (part): THIRD_PARTY_NOTICES.md says libcurl serves the
+  Wikipedia articles too; the source archive's index names libsystemd,
+  libcurl and OpenSSL among the runtime's libraries.
+- **V4-SEC-3**: a failed `JS_NewStringLen` (out of memory) ends that
+  engine instead of passing an exception value to `JS_Call`. A formula
+  stopped by its 2 s limit also ends the engine (Temml was stopped at
+  any point; nothing of that run is used again). The next formula gets
+  a newly loaded Temml (`add_math`'s `ready()`), so one hostile formula
+  doesn't leave the rest of the article as TeX; loading counts against
+  the article's 20 s.
+- **V4-SEC-4**: `crengine-ng-current-colour.patch` replaces the
+  radical's stroke only in crengine's own form (six hex digits, then the
+  quote). A book's own `-cr-plain` SVG address could only break its own
+  picture, but nothing in it is changed now.
+- **V4-SEC-5** (part): NAT64 addresses (`64:ff9b::/96`) are judged by
+  the IPv4 address in them, and local-use NAT64 (`64:ff9b:1::/48`) is
+  refused; Wikipedia pages follow redirects only to https
+  (`HttpRequest::https_only`); a language code can't end with a hyphen.
+- **V4-BUG-1**: the reading lists' pages are followed until `next` is
+  empty, not until a page brings nothing usable (a page of deleted
+  entries would have ended a list early and removed its later
+  articles). The same `next` twice, 200 pages of one list or 20,000
+  entries end the reading; then nothing is removed in that update.
+- **V4-BUG-2**: the infobox is found whatever its attributes' order;
+  only a paragraph beside it (at its depth, in the lead, before the first
+  `h2`) moves before it, never one from a caption, a table or a quote.
+- **V4-BUG-3**: an update that rebuilds articles in an older format
+  records the new one only if every local article was made again
+  (`SyncResult::redo`: one failed, or the math engine didn't load); the
+  next update tries again. A Wikipedia page that is gone (404) and was
+  never on the Deck doesn't count, or every update would download
+  everything again.
+- **V4-BUG-4**: an "External links" heading drops its section only when
+  it is that section's first heading (otherwise only the heading goes),
+  and the contents lose whatever the dropped part held.
+- **V4-BUG-5**: inside a dropped element, end tags are matched by name
+  (a stack, as for kept elements), so a stray one can't end it early;
+  each attribute is written once; `</scripts>` doesn't end a script,
+  here or in the TeX finder. Parsoid's HTML is well formed, so these
+  guard against pages that aren't.
+- **V4-BUG-6**: in the contents, an `h3` before any `h2` is an entry of
+  its own; only an `h2` holds `h3`s.
+- **V4-BUG-7**: with both sources set up, every message says whose it is.
+  A short "N new articles" from one source no longer replaces the other's
+  error on screen: an error stays its full 6 s (`App::toast` keeps the
+  longer one while it shows).
+- **V4-BUG-8**: when the cover asked for doesn't come or is an SVG, the
+  first picture that can be one is the cover (Wikipedia: often a map
+  first, then photos).
+- **V4-BUG-9**: `srcset` with widths (`400w, 800w`) gives the widest;
+  in-page links other than notes become text (their targets' ids are
+  removed).
+- **V4-UI-1** (part): when only one list has articles on the Deck, the
+  shelf shows them straight away.
+- **V4-UI-2**: several `lists =` lines add up, as `folder =` does.
+- **V4-OPT-2**: a picture transfer that stalls after connecting marks
+  the transfer, not the host (`HttpResponse::stalled`); a host is given
+  up for the article after two stalls, or at once when it can't be
+  reached (name, connection, TLS). Wikipedia's pictures all come from
+  one host.
+- **V4-TEST-1**: `wallabag_epub` shuts the engine down; the 13 "font not
+  loaded" warnings are gone.
+- **V4-TEST-2**: tests for the above, and the page a book marked as read
+  opens at, with one and two pages a screen (`engine::last_screen_page`,
+  now a function of its own).
+
+**Declined**
+
+- **V4-SEC-2** (QuickJS-ng's licence stripped): flatpak-builder installs
+  every module's licence itself; the build has
+  `/app/share/licenses/io.github.nicocarbone.DeckReader/quickjs/LICENSE`.
+- **V4-SEC-3** (`JS_RunGC` between articles): QuickJS-ng frees by
+  reference counting and collects cycles on its own, within the 64 MB
+  limit; a stopped engine is replaced anyway.
+- **V4-SEC-5** (TEST-NET ranges): documentation addresses aren't routed;
+  there is nothing to reach there.
+- **V4-BUG-10** (`SDL_RegisterEvents` failure): SDL3 returns 0 on
+  failure (SDL2 returned -1); the check is right.
+- **V4-UI-1** (author and last-read sorts on the lists): folders sort by
+  name in those modes, as subfolders do in book folders.
+- **V4-UI-2** (list names with commas): not seen; one per line would be
+  the way if one turns up.
+- **V4-OPT-1** (`lists.json` read on each listing): a few KB parsed in
+  microseconds, next to the folder listing's `stat` of every file.
+- **V4-OPT-3** (repeated scans): milliseconds against seconds of network
+  per article (cleaning a 1.4 MB page takes 7 ms).
+- **V4-OPT-4** (books marked as read never opened are the first to go
+  past 5,000 books): losing a check mark at that size is minor; not
+  worth a second timestamp.

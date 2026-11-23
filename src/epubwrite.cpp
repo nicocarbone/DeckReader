@@ -672,8 +672,9 @@ std::string make_article_epub(ArticleBook b) {
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
         "<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"uid\">\n"
         " <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n"
-        "  <dc:identifier id=\"uid\">urn:wallabag:" +
-        std::to_string(b.id) + "</dc:identifier>\n  <dc:title>" + title + "</dc:title>\n";
+        "  <dc:identifier id=\"uid\">urn:" +
+        xml_escape(b.source) + ":" + std::to_string(b.id) + "</dc:identifier>\n  <dc:title>" + title +
+        "</dc:title>\n";
     if (!b.author.empty())
         opf += "  <dc:creator>" + xml_escape(b.author) + "</dc:creator>\n";
     if (!b.language.empty())
@@ -691,8 +692,34 @@ std::string make_article_epub(ArticleBook b) {
     const std::string head = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
                              "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\"" +
                              lang_attrs + ">\n<head>\n<meta charset=\"utf-8\"/>\n<title>" + title + "</title>\n";
-    std::string nav = head + "</head>\n<body>\n<nav epub:type=\"toc\">\n<ol><li><a href=\"article.xhtml\">" + title +
-                      "</a></li></ol>\n</nav>\n</body>\n</html>\n";
+    // The title, then the sections, h3s inside the h2 before them.
+    std::string toc = "<ol><li><a href=\"article.xhtml\">" + title + "</a></li>";
+    // An h3 before any h2 is an entry of its own, not a parent (V4-BUG-6, D38).
+    bool open = false;   // a top-level <li> is open
+    bool parent = false; // ...and it is an h2's: h3s go inside it
+    bool inner = false;  // its inner <ol> is open
+    for (const ArticleSection& s : b.toc) {
+        const std::string li = "<li><a href=\"article.xhtml#" + xml_escape(s.id) + "\">" + s.text + "</a>";
+        if (s.level == 3 && parent) {
+            toc += inner ? "</li>" + li : "<ol>" + li;
+            inner = true;
+            continue;
+        }
+        if (inner)
+            toc += "</li></ol>";
+        if (open)
+            toc += "</li>";
+        toc += li;
+        open = true;
+        parent = s.level == 2;
+        inner = false;
+    }
+    if (inner)
+        toc += "</li></ol>";
+    if (open)
+        toc += "</li>";
+    toc += "</ol>";
+    std::string nav = head + "</head>\n<body>\n<nav epub:type=\"toc\">\n" + toc + "\n</nav>\n</body>\n</html>\n";
     std::string page = head + "<link rel=\"stylesheet\" type=\"text/css\" href=\"style.css\"/>\n</head>\n<body>\n<h1>" +
                        title + "</h1>\n";
     if (!b.byline.empty())
@@ -705,10 +732,11 @@ std::string make_article_epub(ArticleBook b) {
     if (!b.url.empty())
         page += "<p class=\"source\"><a href=\"" + xml_escape(b.url) + "\">" + xml_escape(b.url) + "</a></p>\n";
     page += "</body>\n</html>\n";
-    const std::string css = "h1 { margin: 0 0 0.4em 0; }\n"
+    const std::string css = std::string("h1 { margin: 0 0 0.4em 0; }\n"
                             "p.byline { font-size: 0.85em; font-style: italic; text-indent: 0; margin: 0 0 1.6em 0; }\n"
                             "p.source { font-size: 0.75em; text-indent: 0; margin-top: 2em; }\n"
-                            "img { max-width: 100%; }\n";
+                            "img { max-width: 100%; }\n") +
+                            b.css;
 
     std::vector<ZipItem> items;
     items.push_back({"mimetype", "application/epub+zip", false});

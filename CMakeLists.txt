@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(deckreader VERSION 0.3.2 LANGUAGES C CXX)
+project(deckreader VERSION 0.4.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -41,6 +41,7 @@ add_library(deckreader_core STATIC
     src/about.cpp
     src/app.cpp
     src/articles.cpp
+    src/articlesync.cpp
     src/book.cpp
     src/canvas.cpp
     src/config.cpp
@@ -67,6 +68,7 @@ add_library(deckreader_core STATIC
     src/ui.cpp
     src/util.cpp
     src/wallabag.cpp
+    src/wikipedia.cpp
 )
 target_include_directories(deckreader_core PUBLIC src ${CMAKE_CURRENT_BINARY_DIR}
     PRIVATE third_party)

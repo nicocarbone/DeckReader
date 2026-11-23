@@ -25,7 +25,8 @@ struct HttpRequest {
     // Given up when under 1 KB/s for this long (0 = no limit): a stalled
     // site doesn't hold the sync for the whole timeout.
     long low_speed_s = 0;
-    bool follow_redirects = false;    // pictures only (GET, no credentials)
+    bool follow_redirects = false;    // pictures and Wikipedia pages (GET, no credentials)
+    bool https_only = false;          // redirects too (Wikipedia's pages, D38)
     // Addresses from web pages (pictures): no connection to this device,
     // the local network or link-local addresses, redirects included (D31).
     bool public_only = false;
@@ -38,7 +39,8 @@ struct HttpResponse {
     std::string error;     // transport problem for the user, "" when an answer came
     bool cancelled = false;
     bool too_large = false;   // longer than max_bytes (`error` says so too)
-    bool unreachable = false; // the host: not found, refused, too slow, TLS failed
+    bool unreachable = false; // the host: not found, refused, no answer, TLS failed
+    bool stalled = false;     // connected, then too slow: this transfer, not the host (D38)
 };
 
 // Once per process, from the main thread, before any request.

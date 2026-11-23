@@ -86,6 +86,8 @@ std::string StateStore::to_json() const {
     json root = {{"version", 1}, {"settings", settings_to_json(settings)}, {"books", books}};
     if (!wallabag_archive.empty() || wallabag_updated || wallabag_format)
         root["wallabag"] = {{"archive", wallabag_archive}, {"updated", wallabag_updated}, {"format", wallabag_format}};
+    if (wikipedia_updated || wikipedia_format)
+        root["wikipedia"] = {{"updated", wikipedia_updated}, {"format", wikipedia_format}};
     // Invalid UTF-8 (odd file names) is replaced rather than throwing.
     return root.dump(1, ' ', false, json::error_handler_t::replace) + "\n";
 }
@@ -98,6 +100,12 @@ bool StateStore::from_json(const std::string& text) {
     wallabag_archive.clear();
     wallabag_updated = 0;
     wallabag_format = 0;
+    wikipedia_updated = 0;
+    wikipedia_format = 0;
+    if (root.contains("wikipedia") && root["wikipedia"].is_object()) {
+        get_to(root["wikipedia"], "updated", wikipedia_updated);
+        get_to(root["wikipedia"], "format", wikipedia_format);
+    }
     if (root.contains("wallabag") && root["wallabag"].is_object()) {
         const json& w = root["wallabag"];
         get_to(w, "updated", wallabag_updated);

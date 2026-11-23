@@ -5,6 +5,42 @@ text of its GitHub release (CI extracts it, see `docs/DEVELOPMENT.md` §6),
 so write it for people installing the app, and add one for every release.
 Design details behind each change are in [docs/DECISIONS.md](docs/DECISIONS.md).
 
+## 0.4.0 (2026-11-23)
+
+The articles you save in the Wikipedia app, on the Deck: a folder for each
+reading list, read offline like books. No wallabag account needed.
+
+**Install or update:** in Desktop Mode, download `DeckReader-v0.4.0.tar.gz`
+below, extract it and run `./scripts/install-steamos.sh` in Konsole.
+Updating keeps your settings, reading positions and bookmarks. Full steps
+are in the
+[README](https://github.com/nicocarbone/DeckReader#install-on-steam-deck-and-steamos).
+
+### Wikipedia
+
+- **Articles saved in the Wikipedia app**, on a new **Wikipedia** shelf in
+  the library, read offline like books: save them with the bookmark in
+  the Wikipedia app on your phone (any reading list), then choose Update
+  articles on the Deck (or press Y on Wikipedia). Each list is a folder
+  (Saved, and yours). Pictures, formulas and references come along, the
+  article's sections are its chapters, and the first paragraph comes
+  before the info box. No wallabag account needed.
+- To set it up, make a personal Wikipedia token that can read your lists
+  and change nothing, and add it to `config.ini` in a `[wikipedia]`
+  section: the steps are in
+  [CONFIGURATION.md](https://github.com/nicocarbone/DeckReader/blob/main/docs/CONFIGURATION.md#wikipedia).
+- With wallabag set up too, Update articles updates both.
+
+### Also
+
+- Math symbols missing from the book's font (such as the dot in
+  "m⋅s⁻¹") now show, in books and articles alike.
+- Updating articles gives up on a connection that stalls after 30
+  seconds instead of waiting up to two minutes, and one slow picture no
+  longer leaves out the rest of an article's pictures.
+- If the update that adds math to older articles misses one, the next
+  update tries it again.
+
 ## 0.3.2 (2026-11-23)
 
 Math in web articles: formulas show as math instead of as their code.

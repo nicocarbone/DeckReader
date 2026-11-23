@@ -43,6 +43,10 @@ void shutdown();
 std::vector<std::string> font_faces();
 // Checks the ZIP directory of an EPUB (epubguard.h). "" when it is safe.
 std::string check_book_file(const std::string& path);
+
+// The first page of the last screen (one or two pages): where a book
+// marked as read opens (D34).
+int last_screen_page(int page_count, int pages_per_screen);
 // Title/author/language from the book's metadata, and its cover scaled to
 // cover_h pixels high (cover may stay empty). Parses only the OPF, so it is
 // fast enough to run for every book in a folder.

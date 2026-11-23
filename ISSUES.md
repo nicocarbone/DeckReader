@@ -1,3 +1,247 @@
+# DeckReader v0.3.1 / v0.3.2 / v0.4.0 Audit — Mark Read, MathML & Wikipedia Reading Lists
+
+Audit of the `v0.3.1` (mark as read/unread, D34), `v0.3.2` (TeX → MathML via Temml + QuickJS-ng + STIX Two Math, D36), and `v0.4.0` working-tree changes (Wikipedia reading lists + shared `articlesync` refactor, D37): `src/texmath.*`, `src/wikipedia.*`, `src/articlesync.*`, `src/articles.*`, `src/wallabag.*`, `src/epubwrite.*`, `src/http.*`, `src/app.*`, `src/book.cpp`, `src/reader_screen.cpp`, `src/library*`, `src/state.*`, `src/config.*`, `src/about.cpp`, `src/ui.*`, `patches/crengine-ng-current-colour.patch`, `patches/crengine-ng-image-plate.patch`, `packaging/flatpak/io.github.nicocarbone.DeckReader.yml`, `scripts/`, `THIRD_PARTY_NOTICES.md`, `docs/CONFIGURATION.md`, `tests/fake-wikipedia.py`, and `tests/unit_tests.cpp`.
+
+Baseline: `tests/run.sh` passes (`1127 checks, 0 failed`, `10` Python shortcut tests), with 13 spurious `warn: font not loaded` warnings during `tex_to_mathml_temml` (see `V4-TEST-1`).
+
+---
+
+## 1. Security, Hardening & Packaging
+
+### V4-SEC-1. Missing `low_speed_s` stall timeout on API and Wikipedia page requests
+- **Severity:** Medium
+- **Where:** `src/wikipedia.cpp:792-799, 883-890`, `src/wallabag.cpp:311-323`, `src/http.cpp:178-182`
+- **Details:**
+  - `HttpRequest::low_speed_s` defaults to `0`, and is currently set (`15` s) only on picture downloads (`src/articlesync.cpp:113`).
+  - Wallabag API calls (`timeout_s = 60` / `120`), Wikipedia reading-list API calls (`timeout_s = 60`), and Wikipedia Parsoid page downloads (`timeout_s = 120`) have no low-speed stall timeout. If a connection stalls mid-transfer (common on handheld Wi-Fi roaming or half-open proxy/CDN sockets), `http.request()` blocks the sync worker for a full 60–120 seconds with 0 bytes/s before failing.
+- **Fix:**
+  - Set a sensible default `low_speed_s` (e.g., `20` or `30` seconds) in `HttpRequest`, or set it explicitly on API and page requests as well.
+
+### V4-SEC-2. QuickJS-ng MIT license file is stripped from the Flatpak bundle
+- **Severity:** Medium
+- **Where:** `packaging/flatpak/io.github.nicocarbone.DeckReader.yml:44, 173-186`, `THIRD_PARTY_NOTICES.md:5-6, 30`, `scripts/make-source-archive.py:149-151`
+- **Details:**
+  - QuickJS-ng's `CMakeLists.txt` installs `LICENSE` to `${CMAKE_INSTALL_DOCDIR}` (`/app/share/doc/qjs/LICENSE`), which the manifest's global `cleanup: - /share/doc` (line 44) immediately removes.
+  - Unlike `fonts`, `stix-math`, and `temml` (which install their license texts under `${FLATPAK_DEST}/share/licenses/`), the `quickjs` module has no `post-install` installing `LICENSE` into `/app/share/licenses/`. The MIT license requires retaining its copyright and permission notice in binary distributions, and `THIRD_PARTY_NOTICES.md:5-6` documents that each bundled module's license is installed under `/app/share/licenses/`.
+  - Minor doc drift: `THIRD_PARTY_NOTICES.md:30` still mentions libcurl/OpenSSL only for "the wallabag articles" (omitting Wikipedia), and `scripts/make-source-archive.py:149-151` omits `libsystemd`, `libcurl`, and `OpenSSL` from the Freedesktop runtime summary in `SOURCES.md`.
+- **Fix:**
+  - Add `post-install: [install -Dm644 ../LICENSE ${FLATPAK_DEST}/share/licenses/quickjs/LICENSE]` to the `quickjs` module (and verify `libunibreak`/`utf8proc` license installation under `/app/share/licenses/`).
+  - Update the two notice lines in `THIRD_PARTY_NOTICES.md` and `scripts/make-source-archive.py`.
+
+### V4-SEC-3. Unchecked `JS_NewStringLen` exception and post-interrupt QuickJS runtime reuse in `TexToMathML::convert()`
+- **Severity:** Low
+- **Where:** `src/texmath.cpp:470-483`
+- **Details:**
+  - Line 470 calls `JS_NewStringLen(im.ctx, tex.data(), tex.size())` without checking `JS_IsException(args[0])`. If QuickJS hits `MEMORY_LIMIT` (64 MB) while allocating the input string, `JS_EXCEPTION` is passed directly into `JS_Call()` (line 472), violating QuickJS's API contract.
+  - When a hostile formula hits `FORMULA_MS` (2000 ms), `Impl::interrupt()` throws `"interrupted"` from an arbitrary bytecode point inside Temml. Lines 479–480 only set `im.broken = true` on `cancel` or `"out of memory"`, leaving the runtime alive after an arbitrary mid-execution interrupt. Also, `JS_RunGC(im.rt)` is never invoked when reusing the runtime across many math-heavy articles in one sync.
+- **Fix:**
+  - Check `if (JS_IsException(args[0]))` before `JS_Call()`, clear the exception, and mark `im.broken = true`.
+  - Treat `"interrupted"` timeouts as `im.broken = true` so the next article gets a clean runtime (reloading Temml takes ~20–30 ms), and optionally call `JS_RunGC(im.rt)` between articles.
+
+### V4-SEC-4. `crengine-ng-current-colour.patch` assumes 6-hex-digit `stroke='#RRGGBB'`
+- **Severity:** Low
+- **Where:** `patches/crengine-ng-current-colour.patch:78-87` (`lvrend.cpp:8929-8937`)
+- **Details:**
+  - When `filepath.startsWith("data:image/svg;-cr-plain,")` and `pos = filepath.pos("stroke='#")` succeeds with `pos + 15 <= filepath.length()`, the patch unconditionally replaces 6 characters at `pos + 9`.
+  - crengine's own `MathMLHelper` always emits 6 hex digits (`stroke='#%06x'`), so MathML radical signs are safe, but an untrusted EPUB with CSS `url("data:image/svg;-cr-plain,<svg>...stroke='#fff'...")` (3-digit hex) would have its closing `'` and following SVG syntax overwritten.
+- **Fix:**
+  - Verify `pos + 15 < filepath.length() && filepath[pos + 15] == '\''` and that all 6 characters at `pos + 9 .. pos + 14` are hex digits before replacing.
+
+### V4-SEC-5. Defense-in-depth gaps in `public_only` IPv6 check, redirect protocol downgrade, and `wiki_host()`
+- **Severity:** Low
+- **Where:** `src/http.cpp:46-57, 175`, `src/wikipedia.cpp:106-123, 888`
+- **Details:**
+  - `public_ipv6()` (`src/http.cpp:46-57`) blocks `::ffff:0:0/96`, loopback, ULA, and link-local, but does not filter the NAT64 well-known prefix `64:ff9b::/96` (RFC 6052) or local-use NAT64 `64:ff9b:1::/48` (RFC 8215), nor IPv4 TEST-NET ranges (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`). On a NAT64 IPv6-only network, `64:ff9b::127.0.0.1` or `64:ff9b::192.168.1.1` translates to loopback/LAN IPv4 targets.
+  - `CURLOPT_REDIR_PROTOCOLS_STR` (`src/http.cpp:175`) allows `https://` → `http://` downgrade on redirects, including for Wikipedia page fetches (`follow_redirects = true`).
+  - `wiki_host()` (`src/wikipedia.cpp:106-123`) rejects a leading hyphen (`lang.front() == '-'`) but allows a trailing hyphen (e.g., `en-.wikipedia.org`).
+- **Fix:**
+  - Check `64:ff9b::/96` via `public_ipv4(a + 12)` and reject `64:ff9b:1::/48` in `public_ipv6()`; restrict Wikipedia page redirects to `https` when `req.pages_server.empty()`; reject `lang.back() == '-'` in `wiki_host()`.
+
+---
+
+## 2. Bugs (Correctness & Data Integrity)
+
+### V4-BUG-1. `run_wiki_sync()` pagination drops articles on deleted-only pages, lacks an entries-page cap/cycle guard, and deletes local articles on `MAX_ENTRIES` truncation
+- **Severity:** High
+- **Where:** `src/wikipedia.cpp:67-68, 826-855, 867-870`
+- **Details:**
+  - **Premature break on tombstone pages:** `parse_wiki_entries()` (lines 67–68) skips items with `"deleted": true` without adding them to `got`. In `run_wiki_sync()` line 844:
+    `if (next.empty() || got.empty() || entries.size() >= MAX_ENTRIES) break;`
+    If a page of entries returned by Wikimedia's ReadingLists API contains only deleted entries (tombstones) and still returns a non-empty `"next"` cursor, `got.empty()` is `true` — pagination stops early, silently skipping all remaining pages in that list, and `r.listed = true` causes `plan_sync()` to **delete those valid local articles**.
+  - **Missing entries-page cap / cursor-cycle guard:** Unlike the outer `/lists` loop (`MAX_LIST_PAGES = 100`), the inner `/entries` loop (`for (;;)`, line 831) has neither a per-list page limit nor a `seen_next` cursor set. A buggy or cyclic `"next"` token returning 1 entry per page triggers 20,000 sequential HTTP requests.
+  - **Deletion on `MAX_ENTRIES` truncation:** If a user's lists contain more than `MAX_ENTRIES` (20,000) entries, lines 844 and 847 stop reading remaining lists, yet line 867 still sets `r.listed = true` and computes `r.remove`, causing **already-downloaded local articles from unread/truncated lists to be deleted**.
+- **Fix:**
+  - Track `std::set<std::string> seen_next` and a per-list page limit (e.g. `MAX_ENTRY_PAGES = 200`), and stop only when `next.empty()` or `!seen_next.insert(next).second` (not on filtered `got.empty()`).
+  - If `MAX_ENTRIES` or the page cap truncates listing, do not mark the list complete for deletion (either return an error or omit `r.remove` / leave `r.listed = false`).
+
+### V4-BUG-2. `lead_first()` misses infoboxes with attributes before `class`, and can rip `<p>` out of `<figcaption>`, `<table>`, or `<blockquote>`
+- **Severity:** High
+- **Where:** `src/wikipedia.cpp:453-503`
+- **Details:**
+  - **Missed infoboxes:** Line 456 searches strictly for `"<table class=\""`. Because `wiki_clean_page()` (line 695) preserves `class`, `lang`, and `dir` in Parsoid's source attribute order, any infobox emitting `<table lang="..." class="infobox">` or `<table dir="ltr" class="infobox">` is skipped.
+  - **Ripping nested `<p>` out of containers:** Line 499 calls `text_paragraph(box_end, sec_end, &end)`, which finds the first `<p>...</p>` with non-empty text anywhere before `sec_end` **without tracking element nesting**. If a `<figure><figcaption><p>Caption</p></figcaption></figure>`, a second `<table>` (e.g., a sidebar, series nav, or maintenance table), or a `<blockquote>` appears between the infobox and the lead paragraph, `lead_first()` extracts that nested `<p>...</p>` out of its container and pastes it before `<table class="infobox">` — turning a caption or table cell into the opening paragraph and leaving behind an empty/broken caption or cell.
+  - **Missing `</section>`:** If the cleaned HTML has no `</section>`, `sec_end` falls back to `h.size()`, allowing `lead_first()` to pull a `<p>` from after an `<h2>` section heading to the top of the article.
+- **Fix:**
+  - Match `<table` with `class="...infobox..."` regardless of attribute order.
+  - Stop scanning at `<h2`/`<h3` as well as `</section>`, and only pick a `<p>` at depth 0 inside the lead `<section>` (ignoring `<p>` nested inside `<table>`, `<figure>`, `<figcaption>`, `<blockquote>`, `<div>`, `<ul>`, `<ol>`).
+
+### V4-BUG-3. `Articles::on_wake()` advances `wallabag_format` / `wikipedia_format` even when rebuilds fail or Temml fails to load
+- **Severity:** High
+- **Where:** `src/articles.cpp:207-214`, `src/wallabag.cpp:243-247`
+- **Details:**
+  - `Articles::on_wake()` bumps `wallabag_format` / `wikipedia_format` whenever `r.update && r.listed && r.error.empty() && !r.cancelled`.
+  - When upgrading from v0.3.0 to v0.3.2 (`req.rebuild == true`), if even one article fails with a transient HTTP 500 (`r.failed > 0`, while `r.error` stays `""`), OR if `temml.min.js` fails to load (`m.unavailable = true` in `wallabag.cpp:246`, leaving articles without MathML), `wallabag_format` is still incremented to `ARTICLE_FORMAT` (2). Future updates run with `req.rebuild == false`, so those articles are **never rebuilt with math**.
+- **Fix:**
+  - Only advance `wallabag_format` / `wikipedia_format` when `r.failed == 0` (and for wallabag, add a `bool math_unavailable` flag on `SyncResult` so a failed Temml load does not mark the format upgrade done).
+
+### V4-BUG-4. `wiki_clean_page()`: `<h3>` with `id="External_links"` can delete an enclosing `<h2>` section and leave dangling TOC entries
+- **Severity:** Medium
+- **Where:** `src/wikipedia.cpp:550-560, 645-654`
+- **Details:**
+  - Line 645 matches `(t.name == "h2" || t.name == "h3") && id && external_links_heading(*id)` and unwinds `stack` to the nearest `<section>` via `drop_from(k - 1, ...)`.
+  - If an `<h3>` with `id="External_links"` (or localized equivalent) appears inside an `<h2>`'s `<section>` without its own nested `<section>`, `drop_from()` truncates `out` back to before the parent `<h2>`'s `<section>`, silently **deleting the parent `<h2>` and all its content**, while leaving the parent `<h2>` (and any earlier `<h3>`s in that section) **orphaned in `page.toc`** pointing to deleted `#id` anchors.
+- **Fix:**
+  - Record `size_t toc_size` on `Open`, roll back `page.toc.resize(stack[k].toc_size)` inside `drop_from()`, and only unwind to `<section>` if the heading is `<h2>` or if no earlier heading was emitted inside that `<section>`.
+
+### V4-BUG-5. `wiki_clean_page()` `dropping` counter desynchronizes on stray end tags, duplicate attributes can emit invalid XML, and `find_end_tag()` accepts prefix matches
+- **Severity:** Medium
+- **Where:** `src/wikipedia.cpp:420-425, 584-587, 632-636, 686-706`, `src/texmath.cpp:232`
+- **Details:**
+  - **Stray close tags inside dropped elements:** While `dropping > 0`, line 585 decrements `dropping--` on any non-void closing tag without matching element names. Hand-edited Wikipedia templates inside navboxes/hatnotes often contain a stray `</span>` or `</p>`, which drops `dropping` to `0` prematurely, leaks the rest of the navbox into the article, and causes the navbox's real `</div>` to close an outer `<section>`.
+  - **Duplicate attributes:** Lines 688–706 emit kept attributes without deduplicating attribute names. If an input tag carries duplicate attributes (e.g., `class="a" class="b"`), the emitted XHTML violates XML 1.0's unique-attribute rule.
+  - **Weak raw-text end-tag match:** `find_end_tag()` (`src/wikipedia.cpp:420-425`) and `find_tex()` (`src/texmath.cpp:232`) match `</script` / `</style` without checking that the following character is `>` or whitespace (so `</scripts>` terminates `<script>`).
+- **Fix:**
+  - Replace the integer `dropping` counter with a small `std::vector<std::string> drop_stack` that matches closing tag names the same way `stack` does.
+  - Deduplicate emitted attribute names per start tag.
+  - Require `>` or whitespace immediately after `name` in `find_end_tag()` and `texmath.cpp:232`.
+
+### V4-BUG-6. `make_article_epub()` nests subsequent `<h3>` TOC items inside an initial `<h3>` when no `<h2>` precedes it
+- **Severity:** Medium
+- **Where:** `src/epubwrite.cpp:698-716`
+- **Details:**
+  - When the first entry in `book.toc` has `level == 3` (`!in_h2`), the `else` branch runs (`nav += li; in_h2 = true;`), treating that `<h3>` as an open `<h2>`. Any subsequent `<h3>` is then wrapped in `<ol>...</ol>` *inside* the first `<h3>` instead of appearing as a sibling.
+- **Fix:**
+  - Only set `in_h2 = true` when `s.level <= 2`; when `s.level == 3 && !in_h2`, emit `li + "</li>"` at top level.
+
+### V4-BUG-7. Dual-source toast overwrite and missing source prefix when wallabag and Wikipedia both run
+- **Severity:** Medium
+- **Where:** `src/articles.cpp:223-244`, `src/app.cpp:79-83, 135-147`
+- **Details:**
+  - `App::update_articles()` starts wallabag and Wikipedia syncs concurrently, but `App` has a single `toast_` slot. If one source fails (showing a 6-second error toast) and the other finishes shortly afterward with `"Wikipedia: No new articles"` (2.2 s), the success toast immediately overwrites the error toast before the user can read it (though the error still remains visible on the source's start-screen row via `Articles::status()`).
+  - Also, lines 227–228 and 234 omit the `who` prefix (`"wallabag: "`) when `pending` is non-empty, making it unclear which source produced the message when both are configured.
+- **Fix:**
+  - Always include `who` in `src/articles.cpp:227-234`, and avoid letting a short non-error toast replace an active error toast (or show a single combined toast when both concurrent updates finish).
+
+### V4-BUG-8. Wikipedia articles get no library cover when their first image is an SVG
+- **Severity:** Low
+- **Where:** `src/wikipedia.cpp:914-915`, `src/articlesync.cpp:133-134`
+- **Details:**
+  - `run_wiki_sync()` passes `pics.front()` as `cover_url`. In `add_pictures()` (`src/articlesync.cpp:133`), `if (url == cover_url && media != "image/svg+xml") book.cover = href;`.
+  - Many Wikipedia articles begin with an SVG map, diagram, emblem, or icon followed by raster photos. Because `cover_url` is an SVG (or if `pics.front()` fails to download), `book.cover` remains empty and none of the subsequent raster images are promoted to cover.
+- **Fix:**
+  - Allow Wikipedia (or any article whose `cover_url` was SVG / failed) to fall back to the first successfully downloaded non-SVG image as `book.cover`.
+
+### V4-BUG-9. `densest()` ignores `w` descriptors in `srcset`, and `wiki_clean_page()` leaves dead non-citation `#id` links
+- **Severity:** Low
+- **Where:** `src/wikipedia.cpp:386-412, 675-676, 696-698`
+- **Details:**
+  - `densest()` only parses `x`/`X` descriptors (`1.5x`, `2x`); for `w` descriptors (`400w, 800w`), every candidate gets `x = 1` and only the first (smallest) URL is selected.
+  - Line 675 preserves internal `#fragment` links (`<a href="#foo">`), while lines 696–698 strip `id` from all elements except `cite_note-*`, `cite_ref-*`, and `h2`/`h3`/`h4`, leaving internal links to tables, figures, or anchors as dead links.
+- **Fix:**
+  - Support `w` descriptors (comparing widths when `w` is used) in `densest()`.
+  - Either unwrap non-citation `#...` links or preserve target `id`s that are referenced.
+
+### V4-BUG-10. `SDL_RegisterEvents(1)` error check tests `0` instead of `(Uint32)-1`
+- **Severity:** Low
+- **Where:** `src/articles.cpp:47-48`
+- **Details:**
+  - `SDL_RegisterEvents(1)` returns `(Uint32)-1` (`UINT32_MAX`) on failure, not `0`. `ev ? ev : static_cast<uint32_t>(SDL_EVENT_USER)` would store `UINT32_MAX` if registration ever failed.
+- **Fix:**
+  - Check `ev != static_cast<Uint32>(-1)`.
+
+---
+
+## 3. UI / UX Issues
+
+### V4-UI-1. Sorting Wikipedia's reading-lists folder by `Author` or `Recent` is a no-op, and empty lists force a single-folder wrapper
+- **Severity:** Low
+- **Where:** `src/library_screen.cpp:44-49, 478-483`, `src/library.cpp:152-169`
+- **Details:**
+  - `LibraryScreen` shares `article_sort_` (`Name`, `Author`, `Recent`, `Newest`) across wallabag articles, Wikipedia's top-level reading-lists folder, and individual reading lists. At the reading-lists folder level (`loc.list == 0`), all rows are `LibEntry::Folder` with no author and no `last_read` state, so cycling `Y` to `Author` or `Recent` displays `"Sorted by author"` / `"Sorted by last read"` while keeping the exact alphabetical `Name` order.
+  - In `list_articles()` (`src/library.cpp:152-169`), `if (lists.size() == 1)` is checked *before* filtering out lists with 0 downloaded files on disk. If a user has 2 lists in `lists.json` and 1 has 0 downloaded articles (e.g., all its entries failed), Wikipedia still shows an extra 1-folder layer instead of opening straight into the single non-empty list.
+- **Fix:**
+  - Limit the reading-lists folder level to `Name` / `Newest` (or keep a separate sort mode for folders), and collapse to direct articles when only one list has downloaded files on disk.
+
+### V4-UI-2. `[wikipedia] lists` overwrites earlier `lists =` lines instead of appending
+- **Severity:** Low
+- **Where:** `src/config.cpp:144-148`, `docs/CONFIGURATION.md:112`
+- **Details:**
+  - Unlike `[library] folder =` (which appends on repeated lines), `[wikipedia] lists =` calls `cfg.wikipedia.lists.clear()` on every line, so repeating `lists =` silently drops earlier lines, and list names containing a comma cannot be specified.
+- **Fix:**
+  - Append across repeated `lists =` lines (or support one list per line as well as comma-separated values) and document it.
+
+---
+
+## 4. Optimization Opportunities
+
+### V4-OPT-1. `Articles::lists()` re-reads and parses `lists.json` from disk on every `LibraryScreen::list()` / download progress tick
+- **Severity:** Medium
+- **Where:** `src/articles.cpp:77-83, 178-181`, `src/library_screen.cpp:44-45`
+- **Details:**
+  - While viewing Wikipedia during a sync, every downloaded article triggers `on_wake()` → `refresh_library()` → `LibraryScreen::list()` → `src->lists()`, re-reading and parsing `lists.json` from disk on every single article tick and every folder navigation, even though `lists.json` is written only once per sync.
+- **Fix:**
+  - Cache the parsed `std::vector<ArticleList>` in `Articles` and reload it on startup and when a Wikipedia sync enters `Downloading` or completes.
+
+### V4-OPT-2. `add_pictures()` blacklists `upload.wikimedia.org` for the whole article after a single picture timeout
+- **Severity:** Medium
+- **Where:** `src/articlesync.cpp:120-121`, `src/http.cpp:238-241`
+- **Details:**
+  - `CURLE_OPERATION_TIMEDOUT` sets `res.unreachable = true`, and `add_pictures()` inserts `host` into `dead_hosts` on the first `res.unreachable` response.
+  - Because every Wikipedia article picture is served from `upload.wikimedia.org`, one slow/stalled large thumbnail or brief Wi-Fi hiccup causes `dead_hosts` to skip **all remaining pictures** in that article.
+- **Fix:**
+  - Blacklist a host immediately on DNS/connect/TLS failure, but only after 2–3 consecutive timeouts (not on a single transfer timeout).
+
+### V4-OPT-3. Redundant HTML scans and copies during article sync
+- **Severity:** Low
+- **Where:** `src/wallabag.cpp:411-431`, `src/wikipedia.cpp:914-915`, `src/texmath.cpp:164-166`
+- **Details:**
+  - `wallabag.cpp:411, 416`: During rebuild, `find_tex(article.content)` runs twice on every article with math (once to test emptiness, again inside `add_math()`).
+  - `wallabag.cpp:421, 424-431`: `article_book(article)` copies `article.content` into `book.html`, which `add_pictures()` / `rewrite_html()` immediately replaces.
+  - `wikipedia.cpp:914` + `articlesync.cpp:90`: `article_images(html, base)` scans the full cleaned Wikipedia HTML twice per article (once just to pick `pics.front()`, then again inside `add_pictures()`).
+  - `texmath.cpp:164-166`: `decode_entities()` runs twice on every inline `$...$` span (`looks_like_math()` and `add()`).
+- **Fix:**
+  - Pass the already-computed `TexSpan` vector into `add_math()`, move/omit `b.html` when `add_pictures()` will overwrite it, let `add_pictures()` select the first image itself when requested, and decode each inline `$...$` span once.
+
+### V4-OPT-4. `StateStore::save()` evicts never-opened books marked as read first when capping at `MAX_BOOKS`
+- **Severity:** Low
+- **Where:** `src/state.cpp:183-190, 214-221`
+- **Details:**
+  - Marking a never-opened book as read (`mark_read(path, true)`, D34) leaves `b.last_read == 0`. If `books_.size()` ever exceeds `MAX_BOOKS` (5000), `StateStore::save()` evicts entries with the smallest `last_read` first, dropping manually marked-as-read books before any previously opened book.
+
+---
+
+## 5. Test Suite Gaps
+
+### V4-TEST-1. `TEST(wallabag_epub)` initializes crengine without calling `engine::shutdown()`, causing `warn: font not loaded` in `TEST(tex_to_mathml_temml)`
+- **Severity:** Low
+- **Where:** `tests/unit_tests.cpp:1436-1452, 2396`
+- **Details:**
+  - `TEST(wallabag_epub)` calls `engine::init(fonts, data, temp_dir())` at line 1436 and never calls `engine::shutdown()`. When `TEST(tex_to_mathml_temml)` later calls `engine::init()` at line 2396, `fontMan` is already populated, emitting 13 `warn: font not loaded` warnings on every `tests/run.sh` run and testing against leftover engine state from an earlier test.
+- **Fix:**
+  - Add `engine::shutdown();` before the closing brace at `tests/unit_tests.cpp:1451`.
+
+### V4-TEST-2. Missing regression tests for new v0.3.1 / v0.3.2 / v0.4.0 edge cases
+- **Severity:** Low
+- **Where:** `tests/unit_tests.cpp`
+- **Details:**
+  - Add unit tests covering:
+    1. `wiki_clean_page()`: infobox with `lang`/`dir` before `class`, `<figure><figcaption><p>...</p></figcaption></figure>` between infobox and lead `<p>`, stray closing tag inside a dropped navbox, `<h3>` with `id="External_links"` inside an `<h2>` section.
+    2. `run_wiki_sync()`: a page of only `"deleted": true` entries with a `"next"` cursor, and a repeated `"next"` cursor.
+    3. `make_article_epub()`: TOC beginning with `<h3>` followed by another `<h3>` without an enclosing `<h2>`.
+    4. `ReaderScreen` / `StateStore`: opening a book marked as read (`finished == true, xpointer == ""`) in both 1-page and 2-page spread layouts.
+
+---
+
 # DeckReader v0.3.0 Audit — Wallabag Article Sync
 
 > **Reviewed 2026-11-20.** Outcome of every item (fixed, or declined with

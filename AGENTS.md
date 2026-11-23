@@ -24,6 +24,7 @@ non-trivial.
 | Keeping the screen awake while reading | `src/keepawake.cpp` (app side), `helper/deckreader-keep-awake.c` (D-Bus) |
 | wallabag articles (sync, Articles source) | `src/articles.cpp` (app side), `src/wallabag.cpp` (API, pictures, background thread), `src/epubwrite.cpp` (the article EPUB), `src/http.cpp` (libcurl), `tests/fake-wallabag.py` |
 | Math in articles (TeX → MathML, Temml in QuickJS, D36) | `src/texmath.cpp`; the math font and Temml are the manifest's `stix-math` and `temml` modules |
+| Wikipedia reading lists (D37) | `src/wikipedia.cpp` (lists API, cleaning Parsoid's HTML), `src/articlesync.cpp` (shared with wallabag: plan, pictures, thread), `tests/fake-wikipedia.py` |
 | Saving (state.json), atomic writes | `src/state.cpp`, `src/fsutil.cpp` |
 | EPUB archive checks | `src/epubguard.cpp` |
 | config.ini | `src/config.cpp`, `data/config.ini`, `docs/CONFIGURATION.md` |
@@ -84,7 +85,7 @@ look at them before finishing.
   them or their contents. Published pictures come from public-domain books
   (`tools/make-screenshots.sh`).
 
-## Current state (2026-11-23, v0.3.2 released)
+## Current state (2026-11-23, v0.4.0 released)
 
 - First version written and tested headless (offscreen and gamescope, at
   1280×800 and 4K) with nine real EPUBs (Spanish and English): all open
@@ -129,4 +130,12 @@ look at them before finishing.
 - v0.3.2 released on 2026-11-23: math in articles (D36), tested with
   unit tests, a fake-server sync and the owner's wallabag article with 30
   formulas (headless, 1280×800 and 4K), and confirmed on the owner's
-  Steam Deck with test bundle v0.3.2-test1. Footnotes (D35) next.
+  Steam Deck with test bundle v0.3.2-test1.
+- v0.4.0 released on 2026-11-23: Wikipedia reading lists (D37), tested
+  with unit tests, a fake-server sync, three real pages and the owner's
+  account (16 lists, 5 newest articles with their pictures; headless,
+  1280×800 and 4K), and confirmed on the owner's Steam Deck (test bundles
+  v0.4.0-test1 to test3; test2 added a folder per list). Third audit
+  (ISSUES.md, Gemini) reviewed in D38: most items fixed, the rest
+  declined with reasons.
+- Next: footnotes (D35); then feeds (v0.5).

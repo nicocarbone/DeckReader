@@ -194,6 +194,14 @@ void Ui::icon_articles(float x, float cy, float s, Color c) {
     rect(x0 + in, y + h * 0.76f, iw, lh, cut, lh / 2);
 }
 
+void Ui::icon_wikipedia(float x, float cy, float s, Color c) {
+    // The articles' page shape with a "W" cut out of it: the encyclopedia,
+    // without Wikipedia's logo (D37).
+    float w = s * 0.86f, h = s * 0.92f, x0 = x + (s - w) / 2, y = cy - h / 2;
+    rect(x0, y, w, h, c, s * 0.08f);
+    text(x0 + w / 2, cy, "W", s * 0.62f, col(theme.bg, 0.6f), true, ALIGN_CENTER);
+}
+
 void Ui::icon_check(float cx, float cy, float r) {
     circle(cx, cy, r, col(theme.good));
     float t = r * 0.26f;

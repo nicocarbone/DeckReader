@@ -10,11 +10,8 @@
 #include <cctype>
 #include <cstdio>
 #include <ctime>
-#include <fcntl.h>
-#include <map>
 #include <memory>
 #include <set>
-#include <sys/stat.h>
 
 #include "nlohmann/json.hpp"
 
@@ -25,11 +22,7 @@ using json = nlohmann::json;
 namespace {
 constexpr size_t MAX_JSON = 16u << 20;
 constexpr size_t MAX_ARTICLE_JSON = 32u << 20;
-// Pictures: per article at most this many, this big each, this much in all
-// (the archive checks, D5, allow 256 MB per file and 1 GB in all).
-constexpr size_t MAX_PICTURES = 60;
-constexpr size_t MAX_PICTURE = 10u << 20;
-constexpr size_t MAX_PICTURES_TOTAL = 32u << 20; // in memory while the book is made
+constexpr long STALL_S = 30; // below 1 KB/s this long: given up (V4-SEC-1, D38)
 // The unread list is asked for in pages of at most this many (servers may
 // limit pages; small ones may not manage hundreds at once).
 constexpr int LIST_PAGE = 100;
@@ -140,7 +133,7 @@ std::string token_error(long status, const std::string& body, const std::string&
     return strf("wallabag answered HTTP %ld to the login.", status);
 }
 
-bool parse_entries(const std::string& body, std::vector<WallabagEntry>& out, int* pages) {
+bool parse_entries(const std::string& body, std::vector<ArticleEntry>& out, int* pages) {
     out.clear();
     json j = json::parse(body, nullptr, false);
     if (!j.is_object() || !j.contains("_embedded") || !j["_embedded"].is_object())
@@ -153,7 +146,7 @@ bool parse_entries(const std::string& body, std::vector<WallabagEntry>& out, int
     for (const json& it : emb["items"]) {
         if (!it.is_object() || !it.contains("id") || !it["id"].is_number_integer())
             continue;
-        WallabagEntry e;
+        ArticleEntry e;
         e.id = it["id"].get<int64_t>();
         if (e.id <= 0)
             continue;
@@ -229,103 +222,6 @@ ArticleBook article_book(const WallabagArticle& a) {
     return b;
 }
 
-namespace {
-
-// Downloads the article's pictures (and its preview picture, the cover)
-// into the book, and points the HTML at them. A picture that can't be had
-// is left out. False only when cancelled.
-// `server` is the wallabag server's host name: pictures wallabag stored
-// itself come from there, wherever it is (a server at home too); others
-// only from the internet (D31).
-bool add_pictures(HttpClient& http, const WallabagArticle& a, const std::string& server, ArticleBook& book,
-                  const std::atomic<bool>& cancel, int* left_out) {
-    // The preview picture (the cover) first: it is never the one left out.
-    std::vector<std::string> urls;
-    const std::string preview = resolve_url(a.url, a.preview_picture);
-    if (!preview.empty())
-        urls.push_back(preview);
-    for (std::string& u : article_images(a.content, a.url))
-        if (u != preview)
-            urls.push_back(std::move(u));
-    if (urls.size() > MAX_PICTURES) {
-        *left_out += static_cast<int>(urls.size() - MAX_PICTURES);
-        urls.resize(MAX_PICTURES);
-    }
-    std::map<std::string, std::string> local;
-    std::set<std::string> dead_hosts; // don't wait for an unreachable host twice
-    size_t total = 0;
-    int n = 0;
-    for (const std::string& url : urls) {
-        const std::string host = url_host(url);
-        if (dead_hosts.count(host)) {
-            (*left_out)++;
-            continue;
-        }
-        // A plain GET: no wallabag token, no cookies, redirects followed.
-        HttpRequest q;
-        q.url = url;
-        q.max_bytes = MAX_PICTURE;
-        q.timeout_s = 60;
-        q.connect_timeout_s = 10;
-        q.low_speed_s = 15;
-        q.follow_redirects = true;
-        q.public_only = host_name(host) != server;
-        q.headers = {"Accept: image/webp,image/png,image/jpeg,image/gif,image/svg+xml;q=0.9,*/*;q=0.5"};
-        HttpResponse res = http.request(q, &cancel);
-        if (res.cancelled)
-            return false;
-        if (res.unreachable) // not for one bad address or a picture too big
-            dead_hosts.insert(host);
-        std::string media, ext;
-        if (!res.error.empty() || res.status != 200 || !image_type(res.body, &media, &ext) ||
-            total + res.body.size() > MAX_PICTURES_TOTAL) {
-            LOG_D("wallabag: picture %s left out (%s)", url.c_str(),
-                  !res.error.empty() ? res.error.c_str() : strf("HTTP %ld, %zu bytes", res.status, res.body.size()).c_str());
-            (*left_out)++;
-            continue;
-        }
-        total += res.body.size();
-        std::string href = strf("images/%d.%s", ++n, ext.c_str());
-        local[url] = href;
-        if (url == preview && media != "image/svg+xml")
-            book.cover = href;
-        book.images.push_back({href, media, std::move(res.body)});
-    }
-    book.html = rewrite_html(a.content, a.url, local);
-    return true;
-}
-
-} // namespace
-
-std::string article_file_name(int64_t id) {
-    return std::to_string(id) + ".epub";
-}
-
-int64_t article_id(const std::string& name) {
-    if (name.size() < 6 || name.size() > 23 || name.compare(name.size() - 5, 5, ".epub") != 0)
-        return 0;
-    std::string digits = name.substr(0, name.size() - 5);
-    if (digits[0] == '0' || !std::all_of(digits.begin(), digits.end(), [](char c) { return c >= '0' && c <= '9'; }))
-        return 0;
-    return std::stoll(digits);
-}
-
-SyncPlan plan_sync(const std::vector<WallabagEntry>& unread, const std::vector<int64_t>& local,
-                   const std::vector<int64_t>& archive, bool rebuild) {
-    SyncPlan plan;
-    std::set<int64_t> have(local.begin(), local.end()), skip(archive.begin(), archive.end()), want;
-    for (const WallabagEntry& e : unread) {
-        if (skip.count(e.id) || !want.insert(e.id).second)
-            continue;
-        if (rebuild || !have.count(e.id))
-            plan.download.push_back(e);
-    }
-    for (int64_t id : have)
-        if (!want.count(id))
-            plan.remove.push_back(id);
-    return plan;
-}
-
 // --- a sync ---------------------------------------------------------------------
 
 namespace {
@@ -342,22 +238,32 @@ void add_math(WallabagArticle& a, const std::string& temml_js, MathState& m, con
     const std::vector<TexSpan> spans = find_tex(a.content);
     if (spans.empty() || m.unavailable)
         return;
-    if (!m.engine || !m.engine->usable()) { // first use, or stopped by the last article
+    const uint64_t t0 = mono_ms(), until = t0 + ARTICLE_MATH_MS;
+    // A new engine at the first formula, and after one was stopped (out of
+    // time or memory): nothing of the stopped one is used again, and the
+    // formulas after it still convert (V4-SEC-3, D38). Loading counts
+    // against the article's time.
+    auto ready = [&] {
+        if (m.engine && m.engine->usable())
+            return true;
+        if (m.unavailable || cancel || mono_ms() >= until)
+            return false;
         m.engine = std::make_unique<TexToMathML>();
         std::string err;
-        if (!m.engine->load(temml_js, &cancel, &err)) {
-            LOG_W("wallabag: no math: %s", err.c_str());
-            m.engine.reset();
-            m.unavailable = !cancel;
-            return;
-        }
-    }
-    const uint64_t t0 = mono_ms(), until = t0 + ARTICLE_MATH_MS;
+        if (m.engine->load(temml_js, &cancel, &err))
+            return true;
+        LOG_W("wallabag: no math: %s", err.c_str());
+        m.engine.reset();
+        m.unavailable = !cancel;
+        return false;
+    };
+    if (!ready())
+        return;
     int ok = 0, bad = 0;
     a.content = replace_tex(
         a.content, spans,
         [&](const std::string& tex, bool display, std::string& mathml) {
-            return !cancel && mono_ms() < until && m.engine->convert(tex, display, mathml);
+            return !cancel && mono_ms() < until && ready() && m.engine->convert(tex, display, mathml);
         },
         &ok, &bad);
     LOG_I("wallabag: article %lld: %d formulas (%d left as TeX) in %llu ms", static_cast<long long>(a.id), ok + bad,
@@ -367,8 +273,7 @@ void add_math(WallabagArticle& a, const std::string& temml_js, MathState& m, con
 } // namespace
 
 
-SyncResult run_sync(const SyncRequest& req, const std::atomic<bool>& cancel,
-                    const std::function<void(const SyncProgress&)>& progress) {
+SyncResult run_sync(const SyncRequest& req, const std::atomic<bool>& cancel, const SyncProgressFn& progress) {
     SyncResult r;
     r.update = req.update;
     SyncProgress p;
@@ -399,6 +304,7 @@ SyncResult run_sync(const SyncRequest& req, const std::atomic<bool>& cancel,
                            {"username", s.username},
                            {"password", s.password}});
     tq.max_bytes = MAX_JSON;
+    tq.low_speed_s = STALL_S;
     HttpResponse tr = http.request(tq, &cancel);
     if (tr.cancelled) {
         r.cancelled = true;
@@ -421,6 +327,7 @@ SyncResult run_sync(const SyncRequest& req, const std::atomic<bool>& cancel,
         q.headers = {"Authorization: Bearer " + token};
         q.max_bytes = max_bytes;
         q.timeout_s = timeout_s;
+        q.low_speed_s = STALL_S;
         if (q.method == "PATCH") {
             q.content_type = "application/x-www-form-urlencoded";
             q.body = "archive=1";
@@ -466,7 +373,7 @@ SyncResult run_sync(const SyncRequest& req, const std::atomic<bool>& cancel,
     report();
     // Page after page until max_articles: the whole list must come, or
     // articles on later pages would look read and be removed.
-    std::vector<WallabagEntry> unread;
+    std::vector<ArticleEntry> unread;
     const int per_page = std::min(s.max_articles, LIST_PAGE);
     for (int page = 1;; page++) {
         HttpResponse lr = api("GET",
@@ -477,13 +384,13 @@ SyncResult run_sync(const SyncRequest& req, const std::atomic<bool>& cancel,
             failed(lr, "getting the list of articles");
             return r;
         }
-        std::vector<WallabagEntry> items;
+        std::vector<ArticleEntry> items;
         int pages = 1;
         if (!parse_entries(lr.body, items, &pages)) {
             r.error = "wallabag's list of articles could not be read.";
             return r;
         }
-        for (WallabagEntry& e : items)
+        for (ArticleEntry& e : items)
             if (static_cast<int>(unread.size()) < s.max_articles)
                 unread.push_back(std::move(e));
         if (items.empty() || page >= pages || static_cast<int>(unread.size()) >= s.max_articles)
@@ -499,7 +406,7 @@ SyncResult run_sync(const SyncRequest& req, const std::atomic<bool>& cancel,
     p.phase = SyncProgress::Downloading;
     p.total = static_cast<int>(plan.download.size());
     report();
-    for (const WallabagEntry& e : plan.download) {
+    for (const ArticleEntry& e : plan.download) {
         const uint64_t t0 = mono_ms();
         HttpResponse res = api("GET", "/api/entries/" + std::to_string(e.id) + ".json", MAX_ARTICLE_JSON, 120);
         if (res.cancelled || (!res.error.empty() && !res.too_large)) {
@@ -514,6 +421,8 @@ SyncResult run_sync(const SyncRequest& req, const std::atomic<bool>& cancel,
             LOG_W("wallabag: article %lld not downloaded (HTTP %ld, %zu bytes)", static_cast<long long>(e.id),
                   res.status, json_size);
             r.failed++;
+            if (req.rebuild && local.count(e.id))
+                r.redo = true; // still in the old format: again next time
         } else if (local.count(e.id) && find_tex(article.content).empty()) {
             // Rebuilding: format 2 only adds math, so an article without
             // TeX keeps its file (and its pictures aren't fetched again).
@@ -524,98 +433,35 @@ SyncResult run_sync(const SyncRequest& req, const std::atomic<bool>& cancel,
                 r.cancelled = true;
                 return r;
             }
+            if (local.count(e.id) && math.unavailable)
+                r.redo = true; // rebuilt for its math, without math: again next time
             ArticleBook book = article_book(article);
             int left_out = 0;
-            if (s.images && !add_pictures(http, article, server, book, cancel, &left_out)) {
+            // wallabag's own server: the pictures it stored itself, wherever it is.
+            if (s.images && !add_pictures(http, article.content, article.url,
+                                          resolve_url(article.url, article.preview_picture), server, book, cancel,
+                                          &left_out)) {
                 r.cancelled = true;
                 return r;
             }
             if (!s.images)
                 book.html = rewrite_html(article.content, article.url, {}); // no broken squares
-            const std::string path = path_join(req.dir, article_file_name(e.id));
             std::string err;
+            size_t bytes = 0;
             const size_t pictures = book.images.size();
-            const std::string epub = make_article_epub(std::move(book));
-            if (!write_file_atomic(path, epub, &err)) {
+            // Dated when it was saved in wallabag: "Sorted by newest" uses it.
+            if (!save_article(req.dir, e.id, e.created, std::move(book), &bytes, &err)) {
                 r.error = "Couldn't save the articles: " + err;
                 return r;
             }
             LOG_I("wallabag: article %lld: %zu pictures (%d left out), %zu KB in %llu ms", static_cast<long long>(e.id),
-                  pictures, left_out, epub.size() >> 10, static_cast<unsigned long long>(mono_ms() - t0));
-            // Dated when it was saved in wallabag: "Sorted by newest" uses it.
-            if (e.created > 0) {
-                timespec times[2] = {{static_cast<time_t>(e.created), 0}, {static_cast<time_t>(e.created), 0}};
-                utimensat(AT_FDCWD, path.c_str(), times, 0);
-            }
+                  pictures, left_out, bytes >> 10, static_cast<unsigned long long>(mono_ms() - t0));
             (local.count(e.id) ? r.rebuilt : r.downloaded)++;
         }
         p.done++;
         report();
     }
     return r;
-}
-
-SyncWorker::~SyncWorker() {
-    cancel_ = true;
-    if (thread_.joinable())
-        thread_.join();
-}
-
-bool SyncWorker::start(SyncRequest req, std::function<void()> wake) {
-    {
-        std::lock_guard<std::mutex> lock(mu_);
-        if (running_)
-            return false;
-    }
-    if (thread_.joinable())
-        thread_.join(); // the previous one is done (its result was taken)
-    std::lock_guard<std::mutex> lock(mu_);
-    running_ = true;
-    finished_ = false;
-    progress_ = SyncProgress{};
-    result_ = SyncResult{};
-    cancel_ = false;
-    thread_ = std::thread([this, req = std::move(req), wake = std::move(wake)] {
-        SyncResult r = run_sync(req, cancel_, [&](const SyncProgress& p) {
-            {
-                std::lock_guard<std::mutex> l(mu_);
-                progress_ = p;
-            }
-            if (wake)
-                wake();
-        });
-        {
-            std::lock_guard<std::mutex> l(mu_);
-            result_ = std::move(r);
-            finished_ = true;
-        }
-        if (wake)
-            wake();
-    });
-    return true;
-}
-
-bool SyncWorker::busy() const {
-    std::lock_guard<std::mutex> lock(mu_);
-    return running_;
-}
-
-SyncProgress SyncWorker::progress() const {
-    std::lock_guard<std::mutex> lock(mu_);
-    return progress_;
-}
-
-bool SyncWorker::take_result(SyncResult& out) {
-    {
-        std::lock_guard<std::mutex> lock(mu_);
-        if (!running_ || !finished_)
-            return false;
-        out = std::move(result_);
-        running_ = false;
-    }
-    if (thread_.joinable())
-        thread_.join();
-    return true;
 }
 
 } // namespace dr

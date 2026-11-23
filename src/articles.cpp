@@ -5,6 +5,7 @@
 #include "http.h"
 #include "log.h"
 #include "util.h"
+#include "wikipedia.h"
 
 #include <algorithm>
 #include <cmath>
@@ -41,8 +42,8 @@ std::string when_text(int64_t t, int64_t now, bool clock_24h) {
     return strf("%d %s %d", a.tm_mday, months[a.tm_mon], a.tm_year + 1900);
 }
 
-Articles::Articles(App& app) : app_(app) {
-    dir_ = path_join(app_.paths.data_dir, "articles");
+Articles::Articles(App& app, ArticleSource source) : app_(app), source_(source) {
+    dir_ = path_join(app_.paths.data_dir, source_ == ArticleSource::Wikipedia ? "wikipedia" : "articles");
     Uint32 ev = SDL_RegisterEvents(1);
     event_ = ev ? ev : static_cast<uint32_t>(SDL_EVENT_USER);
     if (configured()) {
@@ -52,11 +53,33 @@ Articles::Articles(App& app) : app_(app) {
 }
 
 bool Articles::configured() const {
-    return app_.cfg.wallabag.configured();
+    return source_ == ArticleSource::Wikipedia ? app_.cfg.wikipedia.configured() : app_.cfg.wallabag.configured();
+}
+
+ArticleRoot Articles::root() const {
+    if (source_ == ArticleSource::Wikipedia)
+        return {source_, dir_, "Wikipedia", "Wikipedia"};
+    return {source_, dir_, "Articles", "Article"};
+}
+
+int64_t& Articles::updated() {
+    return source_ == ArticleSource::Wikipedia ? app_.state.wikipedia_updated : app_.state.wallabag_updated;
+}
+
+int64_t Articles::updated() const {
+    return source_ == ArticleSource::Wikipedia ? app_.state.wikipedia_updated : app_.state.wallabag_updated;
 }
 
 bool Articles::is_article(const std::string& path) const {
     return configured() && path_dirname(path) == dir_ && article_id(path_basename(path)) > 0;
+}
+
+std::vector<ArticleList> Articles::lists() const {
+    std::vector<ArticleList> out;
+    std::string text;
+    if (read_file(path_join(dir_, ARTICLE_LISTS_FILE), text, 4u << 20))
+        parse_article_lists(text, out);
+    return out;
 }
 
 std::vector<int64_t> Articles::local_ids() const {
@@ -75,39 +98,51 @@ void Articles::recount() {
 }
 
 void Articles::start(bool update) {
-    SyncRequest req;
-    req.settings = app_.cfg.wallabag;
-    req.dir = dir_;
-    req.archive = app_.state.wallabag_archive;
-    req.local = local_ids();
-    req.update = update;
-    // Articles made by an older version come again (math, D36).
-    req.rebuild = update && app_.state.wallabag_format < ARTICLE_FORMAT;
-    req.temml_js = path_join(app_.paths.app_data, "js/temml.min.js");
     make_dirs(dir_);
+    SyncJob job;
+    if (source_ == ArticleSource::Wikipedia) {
+        WikiSyncRequest req;
+        req.settings = app_.cfg.wikipedia;
+        req.dir = dir_;
+        req.local = local_ids();
+        req.rebuild = app_.state.wikipedia_format < WIKI_FORMAT;
+        job = [req = std::move(req)](const std::atomic<bool>& cancel, const SyncProgressFn& progress) {
+            return run_wiki_sync(req, cancel, progress);
+        };
+    } else {
+        SyncRequest req;
+        req.settings = app_.cfg.wallabag;
+        req.dir = dir_;
+        req.archive = app_.state.wallabag_archive;
+        req.local = local_ids();
+        req.update = update;
+        // Articles made by an older version come again (math, D36).
+        req.rebuild = update && app_.state.wallabag_format < ARTICLE_FORMAT;
+        req.temml_js = path_join(app_.paths.app_data, "js/temml.min.js");
+        job = [req = std::move(req)](const std::atomic<bool>& cancel, const SyncProgressFn& progress) {
+            return run_sync(req, cancel, progress);
+        };
+    }
     const uint32_t ev = event_;
-    worker_.start(std::move(req), [ev] {
+    worker_.start(std::move(job), [ev] {
         SDL_Event e{};
         e.type = ev;
         SDL_PushEvent(&e); // thread-safe; wakes SDL_WaitEvent
     });
-    LOG_I("wallabag: %s", update ? "updating articles" : "marking articles as read");
+    LOG_I("%s: %s", source_ == ArticleSource::Wikipedia ? "wikipedia" : "wallabag",
+          update ? "updating articles" : "marking articles as read");
     app_.redraw();
 }
 
-void Articles::update() {
-    if (!configured())
-        return;
-    if (busy()) {
-        app_.toast("Already updating the articles");
-        return;
-    }
+bool Articles::update() {
+    if (!configured() || busy())
+        return false;
     start(true);
-    app_.toast("Updating articles\xE2\x80\xA6");
+    return true;
 }
 
 void Articles::mark_read(const std::string& path) {
-    if (!is_article(path))
+    if (source_ != ArticleSource::Wallabag || !is_article(path))
         return;
     const int64_t id = article_id(path_basename(path));
     std::vector<int64_t>& pending = app_.state.wallabag_archive;
@@ -135,12 +170,12 @@ void Articles::stop() {
 }
 
 void Articles::on_wake() {
-    app_.redraw(); // progress on the Articles row
+    app_.redraw(); // progress on the source's row
     SyncResult r;
     if (!worker_.take_result(r)) {
-        // New articles appear in the Articles folder as they arrive.
+        // New articles appear in the folder as they arrive.
         SyncProgress p = worker_.progress();
-        if (p.phase == SyncProgress::Downloading && p.done > shown_done_ && app_.showing_articles()) {
+        if (p.phase == SyncProgress::Downloading && p.done > shown_done_ && app_.showing_articles(source_)) {
             shown_done_ = p.done;
             app_.refresh_library();
         }
@@ -148,7 +183,10 @@ void Articles::on_wake() {
     }
     stopping_ = false;
     shown_done_ = 0;
-    std::vector<int64_t>& pending = app_.state.wallabag_archive;
+    const bool wiki = source_ == ArticleSource::Wikipedia;
+    // Only wallabag has articles waiting to be archived.
+    std::vector<int64_t> none;
+    std::vector<int64_t>& pending = wiki ? none : app_.state.wallabag_archive;
     for (int64_t id : r.archived)
         pending.erase(std::remove(pending.begin(), pending.end(), id), pending.end());
     if (!r.archived.empty())
@@ -167,26 +205,35 @@ void Articles::on_wake() {
     }
     // "Updated" means the whole update worked.
     if (r.update && r.listed && r.error.empty() && !r.cancelled) {
-        app_.state.wallabag_updated = wall_time();
-        app_.state.wallabag_format = ARTICLE_FORMAT; // the rebuild is done
+        updated() = wall_time();
+        // The rebuild is done, unless it left some articles in the old
+        // format: then again next time (V4-BUG-3, D38).
+        if (!r.redo && wiki)
+            app_.state.wikipedia_format = WIKI_FORMAT;
+        else if (!r.redo)
+            app_.state.wallabag_format = ARTICLE_FORMAT;
         app_.state.mark_dirty();
     }
     recount();
-    LOG_I("wallabag: %s%s; %d archived, %d unread, %d downloaded, %d rebuilt, %d failed, %zu removed",
-          r.update ? "update" : "archive", r.cancelled ? " cancelled" : r.error.empty() ? " done" : " failed",
-          static_cast<int>(r.archived.size()), r.unread, r.downloaded, r.rebuilt, r.failed,
-          r.listed ? r.remove.size() : size_t(0));
+    LOG_I("%s: %s%s; %d archived, %d listed, %d downloaded, %d rebuilt, %d failed, %zu removed",
+          wiki ? "wikipedia" : "wallabag", r.update ? "update" : "archive",
+          r.cancelled ? " cancelled" : r.error.empty() ? " done" : " failed", static_cast<int>(r.archived.size()),
+          r.unread, r.downloaded, r.rebuilt, r.failed, r.listed ? r.remove.size() : size_t(0));
     const bool again = archive_again_;
     archive_again_ = false;
+    // With both sources set up, their messages say whose they are.
+    const std::string who = app_.articles->configured() && app_.wikipedia->configured()
+                                ? std::string(wiki ? "Wikipedia: " : "wallabag: ")
+                                : std::string();
     if (r.cancelled) { // stopped from the menu (quitting never gets here)
-        app_.toast(pending.empty() ? std::string("Stopped updating the articles")
-                                   : std::string("Stopped. Read articles are sent with the next update."));
+        app_.toast(who + (pending.empty() ? std::string("Stopped updating the articles")
+                                          : std::string("Stopped. Read articles are sent with the next update.")));
         app_.refresh_library();
         return;
     }
     if (!r.error.empty()) {
         last_error_ = r.error;
-        app_.toast(pending.empty() ? r.error : r.error + " Read articles are sent with the next update.", 6000);
+        app_.toast(who + r.error + (pending.empty() ? "" : " Read articles are sent with the next update."), 6000);
     } else {
         last_error_.clear();
         if (r.update) {
@@ -195,7 +242,7 @@ void Articles::on_wake() {
                                                   : strf("%d new articles", r.downloaded);
             if (r.failed)
                 msg += strf(" \xC2\xB7 %d couldn't be downloaded", r.failed);
-            app_.toast(msg, r.failed ? 5000 : 2200);
+            app_.toast(who + msg, r.failed ? 5000 : 2200, true); // not over the other source's error
         }
         if (again && !pending.empty())
             start(false);
@@ -204,17 +251,19 @@ void Articles::on_wake() {
 }
 
 std::string Articles::status() const {
+    const bool wiki = source_ == ArticleSource::Wikipedia;
     if (busy()) {
         if (stopping_)
             return "Stopping\xE2\x80\xA6";
         SyncProgress p = worker_.progress();
         switch (p.phase) {
         case SyncProgress::Starting:
-            return "Connecting to " + url_host(app_.cfg.wallabag.server) + "\xE2\x80\xA6";
+            return wiki ? std::string("Connecting to Wikipedia\xE2\x80\xA6")
+                        : "Connecting to " + url_host(app_.cfg.wallabag.server) + "\xE2\x80\xA6";
         case SyncProgress::Archiving:
             return strf("Marking as read in wallabag\xE2\x80\xA6 %d of %d", std::min(p.done + 1, p.total), p.total);
         case SyncProgress::Listing:
-            return "Getting the list of articles\xE2\x80\xA6";
+            return wiki ? "Getting your reading lists\xE2\x80\xA6" : "Getting the list of articles\xE2\x80\xA6";
         case SyncProgress::Downloading:
             return p.total ? strf("Downloading\xE2\x80\xA6 %d of %d", std::min(p.done + 1, p.total), p.total)
                            : std::string("Checking\xE2\x80\xA6");
@@ -222,14 +271,42 @@ std::string Articles::status() const {
     }
     if (!last_error_.empty())
         return "Update failed: " + last_error_;
+    const std::string label = wiki ? "Reading lists \xC2\xB7 " : "wallabag \xC2\xB7 ";
     std::string n = count_ == 1 ? std::string("1 article") : strf("%d articles", count_);
-    const int64_t t = app_.state.wallabag_updated;
+    const int64_t t = updated();
     if (!t)
-        return "wallabag \xC2\xB7 not updated yet";
-    return "wallabag \xC2\xB7 " + n + " \xC2\xB7 updated " + when_text(t, wall_time(), app_.cfg.clock_24h);
+        return label + "not updated yet";
+    return label + n + " \xC2\xB7 updated " + when_text(t, wall_time(), app_.cfg.clock_24h);
+}
+
+std::string Articles::empty_message() const {
+    if (source_ == ArticleSource::Wikipedia) {
+        if (busy())
+            return "Downloading the articles saved in your Wikipedia reading lists\xE2\x80\xA6 They appear here as "
+                   "they arrive.";
+        return updated() ? "No saved articles. Save some in the Wikipedia app (with Sync reading lists on), then "
+                           "choose Update articles in the menu."
+                         : "No articles yet. Choose Update articles in the menu to download the articles saved in "
+                           "your Wikipedia reading lists.";
+    }
+    if (busy())
+        return "Downloading your unread wallabag articles\xE2\x80\xA6 They appear here as they arrive.";
+    return updated() ? "No unread articles. Save some with wallabag, then choose Update articles in the menu."
+                     : "No articles yet. Choose Update articles in the menu to download your unread wallabag articles.";
 }
 
 std::string Articles::about() const {
+    if (source_ == ArticleSource::Wikipedia) {
+        if (!configured())
+            return "Not set up ([wikipedia] in config.ini)";
+        std::string lists;
+        for (const std::string& l : app_.cfg.wikipedia.lists)
+            lists += (lists.empty() ? "" : ", ") + l;
+        std::string s = "Reading lists" + (lists.empty() ? std::string(" (all)") : ": " + lists);
+        if (app_.state.wikipedia_updated)
+            s += " \xC2\xB7 updated " + when_text(app_.state.wikipedia_updated, wall_time(), app_.cfg.clock_24h);
+        return s;
+    }
     if (!configured())
         return "Not set up ([wallabag] in config.ini)";
     std::string s = url_host(app_.cfg.wallabag.server) + " \xC2\xB7 " + app_.cfg.wallabag.username;

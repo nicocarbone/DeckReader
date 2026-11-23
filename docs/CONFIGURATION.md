@@ -78,6 +78,51 @@ username = yourname
 password = your password
 ```
 
+## [wikipedia]
+
+Articles saved in the Wikipedia app's reading lists (the bookmark, which
+fills *Saved*, and any list of your own), read like books (D37). It needs
+no wallabag account. Nothing changes until `token` is set; then the start
+screen shows **Wikipedia**, with a folder for each list (with only one
+list, its articles straight away). Y on it, or Menu → *Update articles*,
+downloads the newest saved articles of each list (with wallabag set up
+too, both update). The network is used only then.
+
+The token is personal and read-only: it can read your lists and change
+nothing in your account. Make it once, in a browser where you are signed
+in to Wikipedia:
+
+1. In the Wikipedia app on the phone: Settings → *Sync reading lists* on
+   (the lists live in your account only then).
+2. Open
+   [meta.wikimedia.org/wiki/Special:OAuthConsumerRegistration/propose/oauth2](https://meta.wikimedia.org/wiki/Special:OAuthConsumerRegistration/propose/oauth2).
+3. Any name (`DeckReader`), version `1.0`, a short description.
+4. Tick *This consumer is for use only by* (your name): it needs no
+   review and the token never expires.
+5. Under the permissions, choose *Request authorization for specific
+   permissions* and tick only *Access private information* (reading lists
+   are private data). Accept the terms and propose it.
+6. Copy the *Access token* the next page shows (only once) into
+   `token =`.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `token` | — | The access token above. It is sent only to meta.wikimedia.org, to read the lists; articles and pictures are fetched without it. |
+| `max_articles` | `50` | How many articles to keep from each list, the newest saved first (1–500). An article in several lists is downloaded once and shows in each of their folders, with one reading position. |
+| `lists` | (all) | Only these lists, separated by commas, as named in the app; `Saved` is the app's own. Several `lists =` lines add up. |
+| `images` | `yes` | Download the articles' pictures from Wikimedia's servers. `no`: text only. |
+
+An article removed from your lists on the phone is removed from the Deck
+at the next update, with its reading position. Marking it as read on the
+Deck (Menu → *Mark as read*) changes nothing in Wikipedia. An article is
+downloaded once: later edits on Wikipedia don't change the copy on the
+Deck.
+
+```ini
+[wikipedia]
+token = eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9...
+```
+
 ## Files
 
 | Path | Content |
@@ -85,6 +130,7 @@ password = your password
 | `~/.config/deckreader/config.ini` | This file |
 | `~/.var/app/io.github.nicocarbone.DeckReader/data/deckreader/state.json` | Reading settings, positions, bookmarks, articles waiting to be marked as read (outside the Flatpak: `~/.local/share/deckreader/`) |
 | `~/.var/app/io.github.nicocarbone.DeckReader/data/deckreader/articles/` | The downloaded wallabag articles (`<id>.epub`) |
+| `~/.var/app/io.github.nicocarbone.DeckReader/data/deckreader/wikipedia/` | The downloaded Wikipedia articles (`<number>.epub`) |
 | `~/.var/app/io.github.nicocarbone.DeckReader/cache/deckreader/` | Covers, titles and laid-out books; safe to delete |
 
 Environment overrides (development and tests): `DECKREADER_CONFIG_DIR`,

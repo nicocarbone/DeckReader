@@ -68,7 +68,7 @@ diff --git a/crengine/src/lvrend.cpp b/crengine/src/lvrend.cpp
              topBorderwidth = tbw;
              // rightBorderwidth=rbw; // (not used)
              bottomBorderwidth = bbw;
-@@ -8915,6 +8923,19 @@
+@@ -8915,6 +8923,25 @@
      css_style_ref_t style = enode->getStyle();
      if (!style->background_image.empty()) {
          lString32 filepath = lString32(style->background_image.c_str());
@@ -77,7 +77,13 @@ diff --git a/crengine/src/lvrend.cpp b/crengine/src/lvrend.cpp
 +        // unless its colour is the element's own.
 +        if (style->color.type != css_val_color && filepath.startsWith("data:image/svg;-cr-plain,")) {
 +            int pos = filepath.pos("stroke='#");
-+            if (pos >= 0 && pos + 15 <= filepath.length()) {
++            // Only crengine's own form: six hex digits, then the quote; a
++            // book's own SVG address is left as it is.
++            bool ours = pos >= 0 && pos + 16 <= filepath.length() && filepath[pos + 15] == '\'';
++            for (int k = pos + 9; ours && k < pos + 15; k++)
++                ours = (filepath[k] >= '0' && filepath[k] <= '9') || (filepath[k] >= 'a' && filepath[k] <= 'f') ||
++                       (filepath[k] >= 'A' && filepath[k] <= 'F');
++            if (ours) {
 +                lString8 hex;
 +                hex << fmt::hex(drawbuf.GetTextColor() & 0xFFFFFF);
 +                while (hex.length() < 6)

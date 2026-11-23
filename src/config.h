@@ -22,6 +22,16 @@ struct WallabagSettings {
     }
 };
 
+// [wikipedia]: the articles saved in the Wikipedia apps' reading lists
+// (D37), read with a personal OAuth token (read-only).
+struct WikipediaSettings {
+    std::string token;               // the access token; printable ASCII (it goes into a header)
+    int max_articles = 50;           // kept on the Deck, the newest saved first, 1..500
+    bool images = true;              // download the articles' pictures
+    std::vector<std::string> lists;  // names of the lists to read; empty = all
+    bool configured() const { return !token.empty(); }
+};
+
 struct Config {
     // [library]
     std::vector<std::string> folders; // "~" already expanded
@@ -36,6 +46,7 @@ struct Config {
     bool keep_awake = true;     // no dimming or sleep while reading (D28)
     int keep_awake_minutes = 10; // ...until this long without input, 1..240
     WallabagSettings wallabag;
+    WikipediaSettings wikipedia;
 
     // Problems found while reading the file (unknown keys, bad values).
     std::vector<std::string> warnings;

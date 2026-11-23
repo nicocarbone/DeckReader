@@ -50,6 +50,12 @@ bool public_ipv6(const unsigned char* a) {
         return public_ipv4(a + 12);
     if (std::memcmp(a, zeros, 12) == 0)
         return false; // ::, ::1 and the old IPv4-compatible forms
+    // NAT64 (RFC 6052, 8215): an IPv4 address inside; local-use: anything.
+    static const unsigned char nat64[12] = {0, 0x64, 0xFF, 0x9B, 0, 0, 0, 0, 0, 0, 0, 0};
+    if (std::memcmp(a, nat64, 12) == 0)
+        return public_ipv4(a + 12);
+    if (std::memcmp(a, nat64, 4) == 0 && a[4] == 0 && a[5] == 1)
+        return false;
     return !(a[0] == 0xFF ||                   // multicast
              (a[0] & 0xFE) == 0xFC ||          // unique local
              (a[0] == 0xFE && (a[1] & 0xC0) == 0x80) ||  // link-local
@@ -169,10 +175,10 @@ HttpResponse HttpClient::request(const HttpRequest& req, const std::atomic<bool>
         headers = curl_slist_append(headers, ("Content-Type: " + req.content_type).c_str());
 
     curl_easy_setopt(c, CURLOPT_URL, req.url.c_str());
-    curl_easy_setopt(c, CURLOPT_PROTOCOLS_STR, "http,https");
+    curl_easy_setopt(c, CURLOPT_PROTOCOLS_STR, req.https_only ? "https" : "http,https");
     curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, req.follow_redirects ? 1L : 0L);
     curl_easy_setopt(c, CURLOPT_MAXREDIRS, 5L);
-    curl_easy_setopt(c, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
+    curl_easy_setopt(c, CURLOPT_REDIR_PROTOCOLS_STR, req.https_only ? "https" : "http,https");
     curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L); // required with threads
     curl_easy_setopt(c, CURLOPT_CONNECTTIMEOUT, req.connect_timeout_s);
     curl_easy_setopt(c, CURLOPT_TIMEOUT, req.timeout_s);
@@ -182,7 +188,10 @@ HttpResponse HttpClient::request(const HttpRequest& req, const std::atomic<bool>
     }
     curl_easy_setopt(c, CURLOPT_OPENSOCKETFUNCTION, on_open_socket);
     curl_easy_setopt(c, CURLOPT_OPENSOCKETDATA, &t);
-    curl_easy_setopt(c, CURLOPT_USERAGENT, "DeckReader/" DECKREADER_VERSION);
+    // Wikimedia asks clients to name themselves and where to reach their
+    // author, and blocks generic ones (D37): the project page, nothing
+    // about the user.
+    curl_easy_setopt(c, CURLOPT_USERAGENT, "DeckReader/" DECKREADER_VERSION " (https://github.com/nicocarbone/DeckReader)");
     curl_easy_setopt(c, CURLOPT_ACCEPT_ENCODING, ""); // whatever curl can decode
     curl_easy_setopt(c, CURLOPT_ERRORBUFFER, errbuf);
     curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, on_body);
@@ -232,10 +241,15 @@ HttpResponse HttpClient::request(const HttpRequest& req, const std::atomic<bool>
             res.error = t.refused ? host + " is on this device or the local network: not used."
                                   : "Couldn't connect to " + host + ".";
             break;
-        case CURLE_OPERATION_TIMEDOUT:
-            res.unreachable = true;
+        case CURLE_OPERATION_TIMEDOUT: {
+            // Connected, then too slow: one transfer stalled, the host is
+            // there (a picture server isn't given up on for it, D38).
+            curl_off_t connected = 0;
+            curl_easy_getinfo(c, CURLINFO_CONNECT_TIME_T, &connected);
+            (connected > 0 ? res.stalled : res.unreachable) = true;
             res.error = host + " didn't answer in time.";
             break;
+        }
         case CURLE_PEER_FAILED_VERIFICATION:
         case CURLE_SSL_CONNECT_ERROR:
         case CURLE_SSL_CERTPROBLEM:

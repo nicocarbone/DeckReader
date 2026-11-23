@@ -19,8 +19,8 @@ must do.
 │        ├─ FreeType + HarfBuzz: interface text                      │
 │        ├─ while reading: deckreader-keep-awake ── D-Bus ──▶        │
 │        │    org.freedesktop.ScreenSaver (Steam), Inhibit portal    │
-│        └─ on request: articles thread ── HTTPS (libcurl) ──▶       │
-│             wallabag (wallabag.it or the user's server)            │
+│        └─ on request: articles threads ── HTTPS (libcurl) ──▶      │
+│             wallabag (wallabag.it or the user's server), Wikipedia │
 │                                                                    │
 │   page texture (opaque) + overlay texture (premultiplied alpha)    │
 │        └─ gamescope ── panel / TV                                   │
@@ -31,9 +31,10 @@ One process, no daemons. The process sleeps until input or a pending
 timer (D1). While a book is being read, a small helper process holds the
 screensaver inhibition that keeps the screen awake (D28); it sleeps too,
 and is stopped in the library and after `keep_awake_minutes` without
-input. When the user updates the wallabag articles or marks one as read,
-a second thread talks to the server and wakes the loop with an SDL event
-on progress and when done (D31); it touches no app state.
+input. When the user updates the articles or marks one as read in
+wallabag, a thread per source (wallabag, Wikipedia) talks to its servers
+and wakes the loop with an SDL event on progress and when done (D31,
+D37); it touches no app state.
 
 ## 2. Modules (`src/`)
 
@@ -50,8 +51,10 @@ on progress and when done (D31); it touches no app state.
 | `menu.*` | Right-side drawer menus (rows, ◀ ▶ values, section headers, scroll, taps) |
 | `about.*` | The About screen: version, build, links, system details for bug reports, credits (D29) |
 | `keepawake.*` | Starts and stops the keep-awake helper while reading (D28) |
-| `articles.*` | The Articles source: starts wallabag syncs, applies their results (state, removed articles, messages), the Articles row's status (D31) |
-| `wallabag.*` | wallabag API client: token, unread list, articles, archive; pictures; the sync plan; the background thread (`SyncWorker`) (D31) |
+| `articles.*` | An articles source in the library (wallabag or Wikipedia, one instance each): starts its syncs, applies their results (state, removed articles, messages), its row's status (D31, D37) |
+| `articlesync.*` | What the article sources share: entries and the sync plan, the pictures, saving the book, the lists shown as folders (`lists.json`), the background thread (`SyncWorker`) (D31, D37) |
+| `wallabag.*` | wallabag API client: token, unread list, articles, archive; math in them (D31, D36) |
+| `wikipedia.*` | Wikipedia reading lists: the lists API (personal OAuth token), the articles' Parsoid HTML cleaned for a book (notes marked, boxes and links removed, sections for the contents) (D37) |
 | `epubwrite.*` | ZIP writer (zlib) and the article EPUB: page, pictures, cover; the article HTML's pictures (find, rewrite, types) (D31) |
 | `texmath.*` | Math in articles: finds TeX formulas in an article's HTML and turns them into MathML with Temml, run in QuickJS with no I/O and with memory, stack and time limits; line-break points for displayed formulas (D36) |
 | `http.*` | HTTP(S) requests through libcurl: limits, cancelling, error messages (D31) |
@@ -139,6 +142,8 @@ when stopped (D28).
 | `~/.config/deckreader/config.ini` | User settings (created from the template on first start) |
 | `$XDG_DATA_HOME/deckreader/state.json` (Flatpak: `~/.var/app/io.github.nicocarbone.DeckReader/data/deckreader/`) | Reading settings, positions, bookmarks, recent books, wallabag ids waiting to be archived, the last update time and the format of the article EPUBs (D36) |
 | `$XDG_DATA_HOME/deckreader/articles/<id>.epub` | wallabag articles (D31) |
+| `$XDG_DATA_HOME/deckreader/wikipedia/<id>.epub` | Wikipedia articles; the id is a hash of the wiki and the title (D37) |
+| `$XDG_DATA_HOME/deckreader/wikipedia/lists.json` | Which reading list has which article: the library's folders (D37) |
 | `$XDG_CACHE_HOME/deckreader/metadata.json`, `covers/*.png` | Library titles/authors/covers |
 | `$XDG_CACHE_HOME/deckreader/layout/` | crengine's laid-out books |
 | `/app/share/deckreader/` | `config.ini` template, `fonts/`, `build-info` |
@@ -166,7 +171,7 @@ when stopped (D28).
   libwebp, zstd, zlib, libsystemd and libcurl come from the runtime.
 - Sandbox (D4): X11 + Wayland, IPC, `--device=all` (GPU and controllers),
   book folders read-only, `xdg-config/deckreader`, the ScreenSaver bus
-  name (D28), the network for wallabag only (D31).
+  name (D28), the network for wallabag and Wikipedia only (D31, D37).
 - Releases: CI builds the bundle, the installer archive and the GPL
   source archive from a version tag (`.github/workflows/build.yml`, D27).
 - SteamOS: `scripts/install-steamos.sh` installs the bundle per user and adds

@@ -68,7 +68,8 @@ bool init(const std::string& fonts_dir, const std::string& crengine_data_dir, co
         LOG_E("no fonts found in %s", fonts_dir.c_str());
         return false;
     }
-    fontMan->SetFallbackFontFaces(lString8("Literata;Inter"));
+    // STIX Two Math last: the symbols text fonts lack ("m⋅s⁻¹", "∑"; D37).
+    fontMan->SetFallbackFontFaces(lString8("Literata;Inter;STIX Two Math"));
 
     std::string hyph = path_join(crengine_data_dir, "hyph") + "/";
     if (!HyphMan::initDictionaries(u32(hyph), true))
@@ -99,6 +100,11 @@ std::vector<std::string> font_faces() {
     for (int i = 0; i < list.length(); i++)
         out.push_back(utf8(list[i]));
     return out;
+}
+
+int last_screen_page(int page_count, int pages_per_screen) {
+    const int pps = std::max(1, pages_per_screen);
+    return page_count <= 0 ? 0 : page_count - 1 - (page_count - 1) % pps;
 }
 
 std::string check_book_file(const std::string& path) {

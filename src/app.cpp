@@ -50,6 +50,7 @@ App::App() = default;
 
 App::~App() {
     articles.reset(); // stops its thread
+    wikipedia.reset();
     for (auto& [id, pad] : gamepads_)
         SDL_CloseGamepad(pad);
     library_.reset();
@@ -75,8 +76,11 @@ std::string App::mountinfo() const {
     return text;
 }
 
-void App::toast(const std::string& message, uint64_t ms) {
+void App::toast(const std::string& message, uint64_t ms, bool yield) {
+    if (yield && !toast_.empty() && now_ < toast_until_ && toast_ms_ > ms)
+        return;
     toast_ = message;
+    toast_ms_ = ms;
     toast_until_ = now_ + ms;
     redraw();
 }
@@ -113,8 +117,48 @@ std::string App::open_book_path() const {
     return screen_ == Screen::Reader && reader_ && reader_->is_open() ? reader_->book().path() : std::string();
 }
 
-bool App::showing_articles() const {
-    return screen_ == Screen::Library && library_ && library_->in_articles();
+bool App::showing_articles(ArticleSource source) const {
+    return screen_ == Screen::Library && library_ && library_->in_articles(source);
+}
+
+Articles* App::article_source(ArticleSource source) {
+    return source == ArticleSource::Wallabag    ? articles.get()
+           : source == ArticleSource::Wikipedia ? wikipedia.get()
+                                                : nullptr;
+}
+
+std::vector<Articles*> App::article_sources() {
+    std::vector<Articles*> out;
+    for (Articles* a : {articles.get(), wikipedia.get()})
+        if (a && a->configured())
+            out.push_back(a);
+    return out;
+}
+
+void App::update_articles() {
+    bool started = false, running = false;
+    for (Articles* a : article_sources()) {
+        if (a->busy())
+            running = true;
+        else
+            started |= a->update();
+    }
+    if (started)
+        toast("Updating articles\xE2\x80\xA6");
+    else if (running)
+        toast("Already updating the articles");
+}
+
+void App::stop_articles() {
+    for (Articles* a : article_sources())
+        a->stop();
+}
+
+bool App::articles_busy() {
+    for (Articles* a : article_sources())
+        if (a->busy())
+            return true;
+    return false;
 }
 
 void App::refresh_library() {
@@ -192,10 +236,11 @@ void App::tap(float x_px, float y_px) {
 }
 
 void App::handle_event(const SDL_Event& e) {
-    if (articles && e.type == articles->event_type()) {
-        articles->on_wake();
-        return;
-    }
+    for (Articles* a : {articles.get(), wikipedia.get()})
+        if (a && e.type == a->event_type()) {
+            a->on_wake();
+            return;
+        }
     std::vector<InputEvent> actions;
     switch (e.type) {
     case SDL_EVENT_QUIT:
@@ -549,7 +594,8 @@ int App::run(const AppOptions& opt) {
     overlay_.resize(display.width(), display.height());
     make_backdrop();
 
-    articles = std::make_unique<Articles>(*this);
+    articles = std::make_unique<Articles>(*this, ArticleSource::Wallabag);
+    wikipedia = std::make_unique<Articles>(*this, ArticleSource::Wikipedia);
     library_ = std::make_unique<LibraryScreen>(*this);
     reader_ = std::make_unique<ReaderScreen>(*this);
     if (!opt.script.empty())
@@ -575,6 +621,7 @@ int App::run(const AppOptions& opt) {
     // A sync still running is cancelled; what it downloaded stays, what it
     // archived is archived again next time (harmless).
     articles.reset();
+    wikipedia.reset();
     http_global_cleanup();
     state.save();
     return 0;

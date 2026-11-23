@@ -58,7 +58,8 @@ public:
     Input input;
     UiTheme theme;
     KeepAwake keep_awake; // while reading (D28)
-    std::unique_ptr<Articles> articles; // wallabag (D31); made once SDL runs
+    std::unique_ptr<Articles> articles;  // wallabag (D31); made once SDL runs
+    std::unique_ptr<Articles> wikipedia; // Wikipedia reading lists (D37)
 
     uint64_t now() const { return now_; }
     // Pixels per layout unit for book pages (screen height / 800).
@@ -66,7 +67,9 @@ public:
     bool engine_ready();
 
     void redraw() { dirty_ = true; }
-    void toast(const std::string& message, uint64_t ms = 2200);
+    // `yield`: not over a longer message still showing (another source's
+    // error, D38).
+    void toast(const std::string& message, uint64_t ms = 2200, bool yield = false);
     void push_menu(std::unique_ptr<Menu> m);
     // Both are safe to call from a menu item's own callback (the menus are
     // destroyed once the current input has been handled).
@@ -80,8 +83,17 @@ public:
     void show_library();
     // Lists the library's current place again (when the library is shown).
     void refresh_library();
-    // The library is showing the Articles folder.
-    bool showing_articles() const;
+    // The library is showing that source's folder.
+    bool showing_articles(ArticleSource source) const;
+    // The articles source of a row or folder; nullptr for None.
+    Articles* article_source(ArticleSource source);
+    // Article sources that are set up, wallabag first.
+    std::vector<Articles*> article_sources();
+    // "Update articles" (menu, Y on a source's row): every source that is
+    // set up, at the same time; "Stop updating articles" stops them.
+    void update_articles();
+    void stop_articles();
+    bool articles_busy();
     void quit() { running_ = false; }
     void open_about();
 
@@ -118,6 +130,7 @@ private:
 
     std::string toast_;
     uint64_t toast_until_ = 0;
+    uint64_t toast_ms_ = 0; // how long the one showing was given
 
     struct PendingOpen {
         std::string path;

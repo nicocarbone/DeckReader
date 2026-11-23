@@ -228,8 +228,14 @@ std::vector<TexSpan> find_tex(const std::string& html) {
             raw = raw || name == r;
         if (raw) {
             if (!closing && !self_closing) {
+                // Its own end tag, the whole name ("</style>", not "</styles>").
+                auto ends_here = [&](size_t at) {
+                    const size_t after = at + 2 + name.size();
+                    return starts_ci(h, at + 2, name.c_str()) && after < n &&
+                           (h[after] == '>' || h[after] == '/' || std::isspace(static_cast<unsigned char>(h[after])));
+                };
                 size_t e = i;
-                while ((e = h.find("</", e)) != std::string::npos && !starts_ci(h, e + 2, name.c_str()))
+                while ((e = h.find("</", e)) != std::string::npos && !ends_here(e))
                     e += 2;
                 size_t gt = e == std::string::npos ? e : h.find('>', e);
                 i = gt == std::string::npos ? n : gt + 1;
@@ -467,16 +473,26 @@ bool TexToMathML::convert(const std::string& tex, bool display, std::string& mat
         im.broken = true;
         return false;
     }
-    JSValue args[2] = {JS_NewStringLen(im.ctx, tex.data(), tex.size()), JS_NewBool(im.ctx, display)};
-    im.deadline = mono_ms() + FORMULA_MS;
+    JSValue text = JS_NewStringLen(im.ctx, tex.data(), tex.size());
+    if (JS_IsException(text)) { // out of memory already (V4-SEC-3, D38)
+        LOG_D("texmath: formula not passed: %s", im.exception().c_str());
+        im.broken = true;
+        return false;
+    }
+    JSValue args[2] = {text, JS_NewBool(im.ctx, display)};
+    const uint64_t deadline = mono_ms() + FORMULA_MS;
+    im.deadline = deadline;
     JSValue r = JS_Call(im.ctx, im.fn, JS_UNDEFINED, 2, args);
+    const bool late = mono_ms() >= deadline;
     im.deadline = 0;
     JS_FreeValue(im.ctx, args[0]);
     JS_FreeValue(im.ctx, args[1]);
     if (JS_IsException(r)) {
         const std::string msg = im.exception();
-        // Stopped from the menu, or out of memory: no more formulas.
-        if ((im.cancel && im.cancel->load()) || msg.find("out of memory") != std::string::npos)
+        // Stopped from the menu, out of memory, or out of time (stopped
+        // anywhere inside Temml): this engine converts nothing more; the
+        // caller starts a new one (V4-SEC-3, D38).
+        if ((im.cancel && im.cancel->load()) || late || msg.find("out of memory") != std::string::npos)
             im.broken = true;
         LOG_D("texmath: formula not converted: %s", msg.c_str());
         return false;

@@ -12,7 +12,8 @@ It is a free, open-source and lightweight app built on the
 (the continuation of CoolReader's engine) and SDL3. It installs as a Flatpak with a Steam
 shortcut (a *Non-Steam game* with library artwork), and works offline:
 the network is used only to download your web articles from
-[wallabag](https://wallabag.org), if you connect it. It is the companion of
+[wallabag](https://wallabag.org) or your saved Wikipedia articles, if you
+connect them. It is the companion of
 [Deck Video Player](https://github.com/nicocarbone/DeckVideoPlayer): same
 look, same buttons, same installer.
 
@@ -47,6 +48,10 @@ look, same buttons, same installer.
   wallabag (the hosted wallabag.it or your own server) and read them on
   the Deck, pictures and math included, from an **Articles** shelf. Mark
   one as read and it's archived in wallabag too.
+- **Saved Wikipedia articles**: the articles you save in the Wikipedia app
+  on a **Wikipedia** shelf, a folder for each reading list, with their
+  pictures, formulas, references and sections as chapters. No wallabag
+  needed.
 - **Contents, bookmarks, chapter jumps** with the D-pad, and a
   **left-stick scrub** through the whole book with a live preview.
 - **Status overlay** with chapter, pages, percentage, battery and clock
@@ -63,8 +68,8 @@ look, same buttons, same installer.
   pages are ready before you turn.
 - **Scales to 4K TVs** for a docked Deck or a Steam Machine.
 - **Private**: no account, no tracking. The network is used only for
-  wallabag, when you update your articles (and their pictures) or mark one
-  as read.
+  wallabag and Wikipedia, when you update your articles (and their
+  pictures) or mark one as read in wallabag.
 
 ## Screenshots
 
@@ -155,7 +160,7 @@ and reading positions are kept).
 | **A** | Open / read | Show or hide the status overlay |
 | **B** | Back (quit at the start screen) | Hide the overlay, else back to the library |
 | **X** | Read from the beginning | Bookmark this page (again to remove) |
-| **Y** | Sort by title, author, last read or newest; on Articles: update them | Next theme |
+| **Y** | Sort by title, author, last read or newest; on Articles or Wikipedia: update them | Next theme |
 | **D-pad ← →**, **L1 / R1** | Page through the list | Previous / next page |
 | **D-pad ↑ ↓** | Move | Previous / next chapter |
 | **L2 / R2** | First / last item | Previous / next chapter |
@@ -175,9 +180,9 @@ font size, line and paragraph spacing, side and top/bottom margins,
 alignment, one or two pages, hyphenation, the book's own styles and text
 rendering. They apply to every book and are kept between sessions.
 
-Book folders, your wallabag account and a few other options (the
-recently read list, the clock format, interface size, accent colour, tap
-zones, keeping the screen awake) are in
+Book folders, your wallabag account, your Wikipedia token and a few other
+options (the recently read list, the clock format, interface size, accent
+colour, tap zones, keeping the screen awake) are in
 `~/.config/deckreader/config.ini`, created on the first start; see
 [docs/CONFIGURATION.md](docs/CONFIGURATION.md). The Flatpak can read
 `~/Books`, Documents, Downloads, `/mnt` and removable drives; for another
@@ -197,8 +202,9 @@ Steam (Game Mode) ─ launches ─▶ flatpak run io.github.nicocarbone.DeckRead
                                    ├─ FreeType + HarfBuzz: the interface's text
                                    ├─ while reading: a small helper asks Steam
                                    │  not to dim the screen (D-Bus)
-                                   └─ when you update articles: a background
-                                      thread downloads them from wallabag (HTTPS)
+                                   └─ when you update articles: background
+                                      threads download them from wallabag
+                                      and Wikipedia (HTTPS)
                                    ▼
                               gamescope ─▶ Steam Deck screen / TV
 ```
@@ -281,6 +287,12 @@ Komga) to download books from your own server. See
   add-on, add your account to the `[wallabag]` section of `config.ini`
   ([docs/CONFIGURATION.md](docs/CONFIGURATION.md)), then press Y on
   **Articles**. They stay readable offline.
+- **Can I read my saved Wikipedia articles?** Yes, without wallabag: save
+  them with the bookmark in the Wikipedia app (with *Sync reading lists*
+  on), make a personal read-only token once and put it in the
+  `[wikipedia]` section of `config.ini`
+  ([docs/CONFIGURATION.md](docs/CONFIGURATION.md) has the steps), then
+  press Y on **Wikipedia**.
 - **Does the screen dim while I read?** No. While a book is open,
   DeckReader asks SteamOS not to dim the screen or sleep, until 10 minutes
   pass without a button press (`keep_awake_minutes` in `config.ini`). In

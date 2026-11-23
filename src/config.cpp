@@ -128,13 +128,33 @@ Config parse_config(const std::string& text, const std::string& home) {
             ok = !value.empty() && end && *end == '\0' && v >= 1 && v <= 500;
             if (ok)
                 cfg.wallabag.max_articles = static_cast<int>(v);
+        } else if (section == "wikipedia" && key == "token") {
+            // Goes into a header: printable ASCII only, no spaces.
+            ok = value.size() <= 4096 &&
+                 std::all_of(value.begin(), value.end(), [](char c) { return c > 0x20 && c < 0x7F; });
+            cfg.wikipedia.token = ok ? value : std::string();
+        } else if (section == "wikipedia" && key == "images") {
+            ok = parse_bool(value, &cfg.wikipedia.images);
+        } else if (section == "wikipedia" && key == "max_articles") {
+            char* end = nullptr;
+            long v = std::strtol(value.c_str(), &end, 10);
+            ok = !value.empty() && end && *end == '\0' && v >= 1 && v <= 500;
+            if (ok)
+                cfg.wikipedia.max_articles = static_cast<int>(v);
+        } else if (section == "wikipedia" && key == "lists") {
+            // Repeated lines add up, as "folder =" does (V4-UI-2, D38).
+            for (const std::string& name : split(value, ','))
+                if (!trim(name).empty())
+                    cfg.wikipedia.lists.push_back(trim(name));
         } else {
             cfg.warnings.push_back(strf("line %d: unknown setting [%s] %s", lineno, section.c_str(), key.c_str()));
             continue;
         }
         if (!ok)
             cfg.warnings.push_back(strf("line %d: bad value for %s: %s", lineno, key.c_str(),
-                                        key == "password" || key == "client_secret" ? "(hidden)" : value.c_str()));
+                                        key == "password" || key == "client_secret" || key == "token"
+                                            ? "(hidden)"
+                                            : value.c_str()));
     }
     const WallabagSettings& w = cfg.wallabag;
     if (!w.configured() && (!w.server.empty() || !w.client_id.empty() || !w.client_secret.empty() ||

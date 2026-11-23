@@ -33,12 +33,18 @@ void LibraryScreen::list(Location& loc) {
     if (loc.selected >= 0 && loc.selected < static_cast<int>(loc.entries.size()))
         keep = loc.entries[static_cast<size_t>(loc.selected)].path;
     switch (loc.type) {
-    case Location::Root:
-        loc.entries = list_root(app_.cfg, app_.state, app_.mountinfo(), app_.paths.home,
-                                app_.articles->configured() ? app_.articles->dir() : std::string());
+    case Location::Root: {
+        std::vector<ArticleRoot> roots;
+        for (Articles* a : app_.article_sources())
+            roots.push_back(a->root());
+        loc.entries = list_root(app_.cfg, app_.state, app_.mountinfo(), app_.paths.home, roots);
         break;
+    }
     case Location::Folder:
-        loc.entries = list_folder(loc.path);
+        if (const Articles* src = app_.article_source(loc.articles))
+            loc.entries = list_articles(loc.path, src->lists(), loc.list);
+        else
+            loc.entries = list_folder(loc.path);
         sort_entries(loc.entries, sort_for(loc), app_.meta, app_.state);
         break;
     }
@@ -118,17 +124,25 @@ void LibraryScreen::enter(const LibEntry& e, bool from_start) {
         return;
     case LibEntry::Folder:
     case LibEntry::Source: {
-        if (e.articles)
-            make_dirs(e.path);
-        if (!is_dir(e.path)) {
-            app_.toast("Folder not found: " + e.path);
-            return;
-        }
         Location loc;
         loc.type = Location::Folder;
         loc.articles = e.articles;
         loc.path = e.path;
         loc.title = e.name;
+        if (e.list) {
+            // A reading list: the articles source's own folder, filtered (D37).
+            const Location& here = stack_.back();
+            loc.articles = here.articles;
+            loc.path = here.path;
+            loc.list = e.list;
+        } else {
+            if (e.articles != ArticleSource::None)
+                make_dirs(e.path);
+            if (!is_dir(e.path)) {
+                app_.toast("Folder not found: " + e.path);
+                return;
+            }
+        }
         stack_.push_back(loc);
         list(stack_.back());
         return;
@@ -191,8 +205,8 @@ void LibraryScreen::handle(const InputEvent& e) {
             loc.selected = 0;
             loc.scroll = 0;
             app_.toast(sort_label(sort));
-        } else if (const LibEntry* s = sel(); s && s->articles) {
-            app_.articles->update(); // Y on the Articles row (D31)
+        } else if (const LibEntry* s = sel(); s && s->articles != ArticleSource::None) {
+            app_.update_articles(); // Y on an articles row (D31, D37)
         }
         break;
     case Action::View:
@@ -213,15 +227,15 @@ void LibraryScreen::open_menu() {
     m->title = "DeckReader";
     Location& loc = stack_.back();
     const LibEntry* sel = loc.entries.empty() ? nullptr : &loc.entries[static_cast<size_t>(loc.selected)];
-    if (app_.articles->configured() && app_.articles->busy())
+    if (app_.articles_busy())
         m->items.push_back({"Stop updating articles", nullptr, nullptr, [this] {
                                 app_.close_menus();
-                                app_.articles->stop();
+                                app_.stop_articles();
                             }});
-    else if (app_.articles->configured())
+    else if (!app_.article_sources().empty())
         m->items.push_back({"Update articles", nullptr, nullptr, [this] {
                                 app_.close_menus();
-                                app_.articles->update();
+                                app_.update_articles();
                             }});
     if (sel && sel->kind == LibEntry::Book) {
         // A partly read book offers both (D34, as DeckVideoPlayer's D42).
@@ -373,10 +387,13 @@ void LibraryScreen::draw_row(Ui& ui, const LibEntry& e, float y, bool sel) {
             ui.icon_usb(LEFT, cy, 32, icon);
         else if (e.kind == LibEntry::Source && e.icon == LibEntry::IconArticles)
             ui.icon_articles(LEFT, cy, 32, icon);
+        else if (e.kind == LibEntry::Source && e.icon == LibEntry::IconWikipedia)
+            ui.icon_wikipedia(LEFT, cy, 32, icon);
         else
             ui.icon_folder(LEFT, cy, 32, e.missing ? ui.col(th.dim) : icon);
-        // The Articles row says how the sync is going (D31).
-        const std::string detail = e.articles ? app_.articles->status() : e.detail;
+        // An articles row says how its sync is going (D31).
+        const Articles* src = app_.article_source(e.articles);
+        const std::string detail = src ? src->status() : e.detail;
         if (detail.empty()) {
             ui.text(TEXT_X, cy, e.name, 21, fg, sel, ALIGN_LEFT, right - TEXT_X);
         } else {
@@ -455,13 +472,18 @@ void LibraryScreen::draw(Ui& ui) {
             sources++;
     }
     if (loc.type != Location::Root) {
-        const char* one = loc.articles ? "1 article" : "1 book";
-        std::string count = books == 1 ? std::string(one) : strf(loc.articles ? "%d articles" : "%d books", books);
-        if (folders)
-            count = (folders == 1 ? std::string("1 folder") : strf("%d folders", folders)) + " \xC2\xB7 " + count;
+        const Articles* src = app_.article_source(loc.articles);
+        const char* one = src ? "1 article" : "1 book";
+        std::string count = books == 1 ? std::string(one) : strf(src ? "%d articles" : "%d books", books);
+        if (folders) {
+            // In an articles source, its folders are reading lists (D37).
+            const std::string f = src ? (folders == 1 ? std::string("1 list") : strf("%d lists", folders))
+                                      : (folders == 1 ? std::string("1 folder") : strf("%d folders", folders));
+            count = books ? f + " \xC2\xB7 " + count : f;
+        }
         ui.text(ui.W() - 40, 50, count, 16, ui.col(th.subtext), false, ALIGN_RIGHT, 270);
         // While the articles update, how far it got instead of the order.
-        std::string under = loc.articles && app_.articles->busy() ? app_.articles->status() : sort_label(sort_for(loc));
+        std::string under = src && src->busy() ? src->status() : sort_label(sort_for(loc));
         ui.text(ui.W() - 40, 78, under, 13, ui.col(th.dim), false, ALIGN_RIGHT, 270);
     } else {
         ui.text(ui.W() - 40, 50, sources == 1 ? std::string("1 source") : strf("%d sources", sources), 16,
@@ -473,12 +495,8 @@ void LibraryScreen::draw(Ui& ui) {
     keep_visible(rows);
     if (loc.entries.empty()) {
         std::string msg = "No books here. Copy .epub files into this folder, then choose Refresh in the menu.";
-        if (loc.articles && app_.articles->busy())
-            msg = "Downloading your unread wallabag articles\xE2\x80\xA6 They appear here as they arrive.";
-        else if (loc.articles)
-            msg = app_.state.wallabag_updated
-                      ? "No unread articles. Save some with wallabag, then choose Update articles in the menu."
-                      : "No articles yet. Choose Update articles in the menu to download your unread wallabag articles.";
+        if (const Articles* src = app_.article_source(loc.articles))
+            msg = src->empty_message();
         float y = list_top_ + 40;
         for (const std::string& line : ui.wrap(msg, 20, false, ui.W() - 160, 3)) {
             ui.text(LEFT, y, line, 20, ui.col(th.subtext));
@@ -509,7 +527,7 @@ void LibraryScreen::draw(Ui& ui) {
     hints.push_back({Glyph::B, stack_.size() > 1 ? "Back" : "Quit"});
     if (loc.type == Location::Folder)
         hints.push_back({Glyph::Y, "Sort"});
-    else if (s && s->articles)
+    else if (s && s->articles != ArticleSource::None)
         hints.push_back({Glyph::Y, "Update"});
     if (book)
         hints.push_back({Glyph::View, "Info"});
