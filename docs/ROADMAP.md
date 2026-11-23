@@ -79,7 +79,7 @@ reviewed (D38).
   since v0.3.2), references kept as notes, navigation boxes and editor
   data removed, links to other articles as plain text.
 - The sync thread, the pictures and the EPUB shared with wallabag (and
-  with the feeds of v0.5).
+  with the feeds of v0.6).
 - Later: the display title ("iPhone", not "IPhone"), one Action API
   request per wiki; a redirect's section (an article saved through a
   redirect opens at the top of its target).
@@ -96,12 +96,38 @@ reviewed (D38).
 - Book info: series, description; delete or hide a book.
 - More formats crengine already reads: FB2, MOBI (no DRM), TXT.
 
-## v0.5: newsletters and blogs by feed
+## v0.5: your Calibre library (OPDS catalogues)
+
+Books from Calibre's content server, browsed on the Deck and downloaded to
+read offline: the book is chosen on the Deck. The same works with
+Calibre-web, Kavita and Komga, which speak OPDS too (requirements 6.2).
+Calibre (or the server) must be running and reachable: at home, or
+through a VPN.
+
+- Settings in `config.ini`: the server's address and an optional login
+  (Calibre uses Basic or Digest; libcurl does both).
+- A Calibre shelf in the library: browse by newest, author, series (in
+  their order) and tag, with covers. No typing needed; search comes with
+  the on-screen keyboard (v0.7).
+- A on a book downloads it, with progress, into the app's own data folder
+  (the book folders stay read-only, D4), like the articles; it then reads
+  like any book. Downloads can be deleted from the menu.
+- EPUB only: other formats are converted in Calibre first.
+- Reuses the articles thread and the HTTP code (D31). New: an Atom/XML
+  parser (no DTDs, no external entities), shared with the feeds of v0.6,
+  and a screen to browse a catalogue.
+- One-way: reading progress isn't sent back to Calibre (that is the
+  wireless connection, further down).
+- Tests: a fake OPDS server shaped like Calibre's; then the owner's
+  Calibre.
+
+## v0.6: newsletters and blogs by feed
 
 Posts from RSS and Atom feeds (Substack and Ghost newsletters, blogs,
 news sites) made into EPUBs on the Deck and read offline like the
 wallabag articles, with no account anywhere. Most of it is v0.3's work:
-the EPUB builder, the picture downloads, the articles thread.
+the EPUB builder, the picture downloads, the articles thread, and
+v0.5's XML parser.
 
 - Feed addresses in `config.ini` (`[feeds]`, one `feed =` line each);
   a Feeds source in the library, one folder per feed, newest first.
@@ -127,17 +153,18 @@ the EPUB builder, the picture downloads, the articles thread.
   Atom samples, including broken and hostile ones.
 - Later: OPML import (the list of feeds from another reader).
 
-## v0.6: OPDS catalogues (requirements 6.2)
+## v0.7: the on-screen keyboard
 
-- OPDS feeds from Calibre-web, Kavita, Komga: browse, search, download
-  into the library folder with progress; read offline.
-- Credentials in `config.ini` first; then a controller on-screen keyboard
-  built so DeckVideoPlayer can reuse it (its roadmap needs a first text
-  field too).
-- Uses the network permission added for wallabag (v0.3, D31).
-- Kiwix's catalogue is an OPDS feed too: the ZIM files of v0.7.
+The Steam keyboard can't be opened reliably from a non-Steam app, so a
+controller keyboard of its own, built so DeckVideoPlayer can reuse it
+(its roadmap needs a first text field too).
 
-## v0.7: whole wikis offline (Kiwix's ZIM files)
+- Search in the Calibre and OPDS catalogues (v0.5): title, author.
+- Then search in whole wikis (v0.8).
+- Later, settings typed in the app instead of `config.ini` (server
+  addresses, logins).
+
+## v0.8: whole wikis offline (Kiwix's ZIM files)
 
 Offline copies of whole wikis (Wikipedia in any language, Wiktionary,
 Wikivoyage, topic selections), the ZIM files Kiwix reads, browsed in the
@@ -148,7 +175,7 @@ already here, and Kiwix's own apps need a web engine, which is out
 (requirements 3.1).
 
 - Before it: following links with the controller and going back (D35,
-  footnotes), and the controller on-screen keyboard (v0.6) for search.
+  footnotes), and the on-screen keyboard (v0.7) for search.
 - `.zim` files in the library next to the EPUBs (split `.zimaa` ones
   too); opening one shows its main page.
 - libzim (openZIM, GPL) in the Flatpak, at first without Xapian: search
@@ -160,13 +187,30 @@ already here, and Kiwix's own apps need a web engine, which is out
   them: to try. B goes back.
 - A wiki menu: main page, search, random article, history; bookmarks
   and reading positions per article (XPointers, as for books).
-- ZIM files downloaded from Kiwix's catalogue (OPDS, v0.6) to the
-  microSD card. Sizes: the whole English Wikipedia with pictures is about
-  100 GB; without pictures, other languages and topic selections far
-  less.
+- ZIM files downloaded to the microSD card from Kiwix's catalogue, an
+  OPDS feed (v0.5). Sizes: the whole English Wikipedia with pictures is
+  about 100 GB; without pictures, other languages and topic selections
+  far less.
 - First, a proof of concept: libzim built in the SDK and a few pages of
   a small Wikipedia ZIM through the engine, to see how Kiwix's HTML
   renders.
+
+## Maybe: Calibre's wireless device connection (let's see)
+
+Not scheduled: to decide once the Calibre shelf (v0.5) has been used for a
+while. The Deck would appear in Calibre as a device, like a Kobo plugged
+in: the book is chosen on the PC.
+
+- "Send to device" in Calibre on the PC: Calibre converts the book to
+  EPUB if needed, with its cover and metadata, and it lands on the Deck.
+- The Deck's books listed in Calibre, removable from there; covers and
+  titles fixed in Calibre updated on the Deck.
+- Read status sent back: books finished on the Deck marked as read in
+  Calibre.
+- Costs: Calibre's device protocol is undocumented (to learn from
+  Calibre's own driver); a "Connect to Calibre" screen that stays
+  connected while one works on the PC; same home network only, with the
+  Calibre program open.
 
 ## Later / ideas
 

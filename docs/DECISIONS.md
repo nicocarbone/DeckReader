@@ -1094,7 +1094,7 @@ none left out, about 14 s.
   virtual: an article in two lists is one file, with one reading
   position, shown in both. Real folders would have meant two copies and
   two positions. The format is the source's, not Wikipedia's: feeds
-  (v0.5) can use it for a folder per feed.
+  (v0.6) can use it for a folder per feed.
 - **Sync** as in D31: the newest `max_articles` entries of each list
   read (per list since the folders: a total of 50 would have left the
   owner's 2018 topic lists empty, behind 2026's "Saved"); new ones
@@ -1122,7 +1122,7 @@ none left out, about 14 s.
 - **Code:** what wallabag and Wikipedia share moved out of `wallabag.cpp`
   into `articlesync.*`: the entries and the plan, the pictures, saving
   the book, and the thread (`SyncWorker` now runs any job). `Articles`
-  serves either source. The feeds of v0.5 will be a third.
+  serves either source. The feeds of v0.6 will be a third.
 - **Tests:** the lists and entries answers, paging, errors, the project
   check, the ids, the choice of articles, the cleaning on a page shaped
   like Parsoid's (and, with `DECKREADER_TEST_WIKI_PAGES`, on real saved
