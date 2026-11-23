@@ -106,6 +106,10 @@ modules:
       # Reads of a stored ZIP entry stop at its end (D32).
       - type: patch
         path: ../../patches/crengine-ng-stream-fragment.patch
+      # Default-colour borders (MathML's fraction bars) and the radical sign
+      # follow theme changes (D36).
+      - type: patch
+        path: ../../patches/crengine-ng-current-colour.patch
 
   # Bundled fonts (all SIL Open Font License 1.1, D9).
   - name: fonts
@@ -148,6 +152,49 @@ modules:
         url: https://github.com/google/fonts/raw/95f4904fc8bcf26d3420fe315560c96417c6dec7/ofl/atkinsonhyperlegible/OFL.txt
         sha256: f32d22b3908fcad2c86a74000614ec22e6a7f66ea7e867e616026a27aebdc143
         dest: atkinson
+
+  # The math font for formulas in articles and books (D36). SIL OFL 1.1.
+  # Its own module: its OFL.txt would clash with Atkinson's in "fonts".
+  - name: stix-math
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 -t ${FLATPAK_DEST}/share/deckreader/fonts STIXTwoMath-Regular.otf
+      - install -Dm644 OFL.txt ${FLATPAK_DEST}/share/licenses/fonts/STIXTwoMath-OFL.txt
+    sources:
+      - type: file
+        url: https://github.com/stipub/stixfonts/raw/37308d44583ef882dc8b544aaa2e80ac8c406ebf/fonts/static_otf/STIXTwoMath-Regular.otf
+        sha256: f2076b9f1676438439dd41e23676f5ab99056e83d6b8f8c27841591ef2ccfa72
+      - type: file
+        url: https://github.com/stipub/stixfonts/raw/37308d44583ef882dc8b544aaa2e80ac8c406ebf/OFL.txt
+        sha256: bec17cee6412788db45fd2644b301afbc99cc5d372ddd3345dc4a7bfdefb9f04
+
+  # JavaScript engine that runs Temml in the articles thread (D36): plain
+  # ECMAScript, no I/O module. Statically linked. MIT licence.
+  - name: quickjs
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DQJS_BUILD_LIBC=OFF
+    cleanup:
+      - /bin
+    sources:
+      - type: git
+        url: https://github.com/quickjs-ng/quickjs.git
+        tag: v0.18.0
+        commit: d7215b0ad3fc2c562e8317fd9bca058fd4863804
+
+  # TeX math to MathML for the articles (D36), run by QuickJS. MIT licence.
+  - name: temml
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 dist/temml.min.js ${FLATPAK_DEST}/share/deckreader/js/temml.min.js
+      - install -Dm644 LICENSE ${FLATPAK_DEST}/share/licenses/temml/LICENSE
+    sources:
+      - type: archive
+        url: https://registry.npmjs.org/temml/-/temml-0.14.0.tgz
+        sha256: 6be7cc75cd61af39a98fd1d88146732818b042ae665963cf0473b44a44b090e2
 
   - name: deckreader
     buildsystem: cmake-ninja

@@ -71,6 +71,9 @@ public:
     // (seconds since the epoch, 0 = never).
     std::vector<int64_t> wallabag_archive;
     int64_t wallabag_updated = 0;
+    // The format of the article EPUBs on the Deck (wallabag.h,
+    // ARTICLE_FORMAT; 0 = before 0.3.2): older ones are downloaded again.
+    int wallabag_format = 0;
 
     // Saving is rate-limited: the first change after a quiet period is
     // written at once, further ones at most every SAVE_INTERVAL_MS, so

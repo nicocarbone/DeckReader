@@ -3,6 +3,7 @@
 #include "fsutil.h"
 #include "http.h"
 #include "log.h"
+#include "texmath.h"
 #include "util.h"
 
 #include <algorithm>
@@ -11,6 +12,7 @@
 #include <ctime>
 #include <fcntl.h>
 #include <map>
+#include <memory>
 #include <set>
 #include <sys/stat.h>
 
@@ -309,13 +311,13 @@ int64_t article_id(const std::string& name) {
 }
 
 SyncPlan plan_sync(const std::vector<WallabagEntry>& unread, const std::vector<int64_t>& local,
-                   const std::vector<int64_t>& archive) {
+                   const std::vector<int64_t>& archive, bool rebuild) {
     SyncPlan plan;
     std::set<int64_t> have(local.begin(), local.end()), skip(archive.begin(), archive.end()), want;
     for (const WallabagEntry& e : unread) {
         if (skip.count(e.id) || !want.insert(e.id).second)
             continue;
-        if (!have.count(e.id))
+        if (rebuild || !have.count(e.id))
             plan.download.push_back(e);
     }
     for (int64_t id : have)
@@ -325,6 +327,45 @@ SyncPlan plan_sync(const std::vector<WallabagEntry>& unread, const std::vector<i
 }
 
 // --- a sync ---------------------------------------------------------------------
+
+namespace {
+
+// The TeX engine of one sync, loaded at the first article with math (D36).
+struct MathState {
+    std::unique_ptr<TexToMathML> engine;
+    bool unavailable = false; // temml.min.js didn't load: no math this time
+};
+
+// The article's TeX formulas become MathML; those that fail, or that don't
+// fit in ARTICLE_MATH_MS, stay as they were.
+void add_math(WallabagArticle& a, const std::string& temml_js, MathState& m, const std::atomic<bool>& cancel) {
+    const std::vector<TexSpan> spans = find_tex(a.content);
+    if (spans.empty() || m.unavailable)
+        return;
+    if (!m.engine || !m.engine->usable()) { // first use, or stopped by the last article
+        m.engine = std::make_unique<TexToMathML>();
+        std::string err;
+        if (!m.engine->load(temml_js, &cancel, &err)) {
+            LOG_W("wallabag: no math: %s", err.c_str());
+            m.engine.reset();
+            m.unavailable = !cancel;
+            return;
+        }
+    }
+    const uint64_t t0 = mono_ms(), until = t0 + ARTICLE_MATH_MS;
+    int ok = 0, bad = 0;
+    a.content = replace_tex(
+        a.content, spans,
+        [&](const std::string& tex, bool display, std::string& mathml) {
+            return !cancel && mono_ms() < until && m.engine->convert(tex, display, mathml);
+        },
+        &ok, &bad);
+    LOG_I("wallabag: article %lld: %d formulas (%d left as TeX) in %llu ms", static_cast<long long>(a.id), ok + bad,
+          bad, static_cast<unsigned long long>(mono_ms() - t0));
+}
+
+} // namespace
+
 
 SyncResult run_sync(const SyncRequest& req, const std::atomic<bool>& cancel,
                     const std::function<void(const SyncProgress&)>& progress) {
@@ -450,7 +491,9 @@ SyncResult run_sync(const SyncRequest& req, const std::atomic<bool>& cancel,
     }
     r.listed = true;
     r.unread = static_cast<int>(unread.size());
-    SyncPlan plan = plan_sync(unread, req.local, req.archive);
+    SyncPlan plan = plan_sync(unread, req.local, req.archive, req.rebuild);
+    const std::set<int64_t> local(req.local.begin(), req.local.end());
+    MathState math;
     r.remove = plan.remove;
 
     p.phase = SyncProgress::Downloading;
@@ -471,7 +514,16 @@ SyncResult run_sync(const SyncRequest& req, const std::atomic<bool>& cancel,
             LOG_W("wallabag: article %lld not downloaded (HTTP %ld, %zu bytes)", static_cast<long long>(e.id),
                   res.status, json_size);
             r.failed++;
+        } else if (local.count(e.id) && find_tex(article.content).empty()) {
+            // Rebuilding: format 2 only adds math, so an article without
+            // TeX keeps its file (and its pictures aren't fetched again).
         } else {
+            if (!req.temml_js.empty())
+                add_math(article, req.temml_js, math, cancel);
+            if (cancel) {
+                r.cancelled = true;
+                return r;
+            }
             ArticleBook book = article_book(article);
             int left_out = 0;
             if (s.images && !add_pictures(http, article, server, book, cancel, &left_out)) {
@@ -495,7 +547,7 @@ SyncResult run_sync(const SyncRequest& req, const std::atomic<bool>& cancel,
                 timespec times[2] = {{static_cast<time_t>(e.created), 0}, {static_cast<time_t>(e.created), 0}};
                 utimensat(AT_FDCWD, path.c_str(), times, 0);
             }
-            r.downloaded++;
+            (local.count(e.id) ? r.rebuilt : r.downloaded)++;
         }
         p.done++;
         report();

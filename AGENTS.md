@@ -23,6 +23,7 @@ non-trivial.
 | About screen | `src/about.cpp` |
 | Keeping the screen awake while reading | `src/keepawake.cpp` (app side), `helper/deckreader-keep-awake.c` (D-Bus) |
 | wallabag articles (sync, Articles source) | `src/articles.cpp` (app side), `src/wallabag.cpp` (API, pictures, background thread), `src/epubwrite.cpp` (the article EPUB), `src/http.cpp` (libcurl), `tests/fake-wallabag.py` |
+| Math in articles (TeX → MathML, Temml in QuickJS, D36) | `src/texmath.cpp`; the math font and Temml are the manifest's `stix-math` and `temml` modules |
 | Saving (state.json), atomic writes | `src/state.cpp`, `src/fsutil.cpp` |
 | EPUB archive checks | `src/epubguard.cpp` |
 | config.ini | `src/config.cpp`, `data/config.ini`, `docs/CONFIGURATION.md` |
@@ -83,14 +84,15 @@ look at them before finishing.
   them or their contents. Published pictures come from public-domain books
   (`tools/make-screenshots.sh`).
 
-## Current state (2026-11-21, v0.3.1 released)
+## Current state (2026-11-23, v0.3.2 released)
 
 - First version written and tested headless (offscreen and gamescope, at
   1280×800 and 4K) with nine real EPUBs (Spanish and English): all open
   (first open 0.1–0.25 s on the dev PC, reopen ~25 ms from the cache).
 - Idle reading: ~0% CPU. Memory: ~88 MB private on the dev PC (NVIDIA);
   not yet measured on a Deck.
-- Flatpak bundle builds (3 MB) and runs (`MODE=flatpak`).
+- Flatpak bundle builds (4 MB since the math font and Temml) and runs
+  (`MODE=flatpak`).
 - First tried by the owner on a Steam Deck OLED (2026-11-17, test1):
   reported font changes moving the position / not applying (fixed: anchor
   and font bias, D14), no visible effect of subpixel modes (expected; D21),
@@ -98,8 +100,9 @@ look at them before finishing.
   checklist (docs/DEVELOPMENT.md §7) is still open.
 - First audit (ISSUES.md, Gemini) reviewed in D22: fixed except BUG-1 and
   BUG-2 (measured/verified not to happen) and three minor declines.
-  crengine-ng now carries six patches (`patches/`; the sixth from the
-  second audit, D32).
+  crengine-ng now carries seven patches (`patches/`; the sixth from the
+  second audit, D32; the seventh, colours that follow a theme change,
+  from the math work, D36).
 - After test3: recently read books on the start screen (D23), optional
   progress line (D24), margins right from the first layout (D25).
 - Release preparation: README rewritten for users and search engines,
@@ -123,3 +126,7 @@ look at them before finishing.
 - v0.3.1 released on 2026-11-21: Mark as read / unread in the library
   menu (D34), tested with unit tests and headless runs and confirmed on
   the owner's Steam Deck with test bundle v0.3.1-test1.
+- v0.3.2 released on 2026-11-23: math in articles (D36), tested with
+  unit tests, a fake-server sync and the owner's wallabag article with 30
+  formulas (headless, 1280×800 and 4K), and confirmed on the owner's
+  Steam Deck with test bundle v0.3.2-test1. Footnotes (D35) next.

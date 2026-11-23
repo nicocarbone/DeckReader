@@ -10,7 +10,7 @@ DeckReader's own source (`scripts/make-source-archive.py`, D27).
 
 | Component | Version | Licence | Use |
 |---|---|---|---|
-| [crengine-ng](https://gitlab.com/coolreader-ng/crengine-ng) | 0.9.15 + 1 commit, with six patches (`patches/`) | GPL-2.0-or-later | Book engine (statically linked) |
+| [crengine-ng](https://gitlab.com/coolreader-ng/crengine-ng) | 0.9.15 + 1 commit, with seven patches (`patches/`) | GPL-2.0-or-later | Book engine (statically linked) |
 | crengine-ng's bundled code: md4c, nanosvg, qimagescale | (in crengine-ng) | MIT; zlib; Qt's LGPL-3.0 / GPL-2.0-or-later option plus BSD-2-Clause (see crengine-ng's `thirdparty/`) | Markdown, SVG images, image scaling |
 | crengine-ng's hyphenation patterns | (in crengine-ng) | various TeX pattern licences (see `crengine/data/hyph/README.md`) | Hyphenation |
 | [libunibreak](https://github.com/adah1972/libunibreak) | 8.0.1 | zlib | Line breaking |
@@ -19,6 +19,9 @@ DeckReader's own source (`scripts/make-source-archive.py`, D27).
 | [Inter](https://rsms.me/inter/) | 4.1 | SIL OFL 1.1 | Interface and reading font |
 | [Literata](https://github.com/googlefonts/literata) | 3.103 | SIL OFL 1.1 | Reading font |
 | [Atkinson Hyperlegible](https://www.brailleinstitute.org/freefont/) | Google Fonts, commit 95f4904 | SIL OFL 1.1 | Reading font |
+| [STIX Two Math](https://github.com/stipub/stixfonts) | 2.13 | SIL OFL 1.1 | Math font (formulas in articles and books) |
+| [QuickJS-ng](https://github.com/quickjs-ng/quickjs) | 0.18.0 | MIT | JavaScript engine that runs Temml (statically linked, no I/O) |
+| [Temml](https://temml.org) | 0.14.0 | MIT | TeX math to MathML, for web articles |
 
 From the Freedesktop runtime (not bundled): SDL3 (zlib), FreeType
 (FTL/GPLv2, used under GPLv2), HarfBuzz (MIT), FriBiDi (LGPL-2.1+), libpng,

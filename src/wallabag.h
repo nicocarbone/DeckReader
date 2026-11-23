@@ -68,12 +68,22 @@ std::string article_file_name(int64_t id);
 int64_t article_id(const std::string& name);
 
 struct SyncPlan {
-    std::vector<WallabagEntry> download; // unread, not on the Deck yet
+    std::vector<WallabagEntry> download; // unread, not on the Deck yet (or all, to rebuild)
     std::vector<int64_t> remove;         // on the Deck, no longer unread
 };
 // Articles waiting to be archived are neither downloaded again nor kept.
+// `rebuild`: the unread articles already on the Deck are downloaded again
+// (made by an older version, ARTICLE_FORMAT).
 SyncPlan plan_sync(const std::vector<WallabagEntry>& unread, const std::vector<int64_t>& local,
-                   const std::vector<int64_t>& archive);
+                   const std::vector<int64_t>& archive, bool rebuild = false);
+
+// What the article EPUBs hold, by version: 1 = text and pictures (0.3.0),
+// 2 = math as MathML (0.3.2, D36). Articles made with an older format are
+// looked at again at the next update (state.json keeps the format): their
+// text comes again, and those with TeX are made again, pictures included.
+constexpr int ARTICLE_FORMAT = 2;
+// Time to convert one article's formulas; the rest stay as TeX (D36).
+constexpr uint64_t ARTICLE_MATH_MS = 20000;
 
 // --- a sync ---
 
@@ -83,6 +93,8 @@ struct SyncRequest {
     std::vector<int64_t> archive; // marked read on the Deck, to archive first
     std::vector<int64_t> local;   // articles already in dir
     bool update = true;           // false: only archive
+    bool rebuild = false;         // look at the local unread articles again (ARTICLE_FORMAT)
+    std::string temml_js;         // temml.min.js: TeX becomes MathML (D36); "" = no math
 };
 
 struct SyncProgress {
@@ -98,6 +110,7 @@ struct SyncResult {
     std::vector<int64_t> remove;   // local articles no longer unread
     int unread = 0;                // in the list (at most max_articles)
     int downloaded = 0, failed = 0;
+    int rebuilt = 0;               // local articles made again (rebuild)
     bool update = true;
 };
 

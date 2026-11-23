@@ -81,6 +81,9 @@ void Articles::start(bool update) {
     req.archive = app_.state.wallabag_archive;
     req.local = local_ids();
     req.update = update;
+    // Articles made by an older version come again (math, D36).
+    req.rebuild = update && app_.state.wallabag_format < ARTICLE_FORMAT;
+    req.temml_js = path_join(app_.paths.app_data, "js/temml.min.js");
     make_dirs(dir_);
     const uint32_t ev = event_;
     worker_.start(std::move(req), [ev] {
@@ -165,12 +168,14 @@ void Articles::on_wake() {
     // "Updated" means the whole update worked.
     if (r.update && r.listed && r.error.empty() && !r.cancelled) {
         app_.state.wallabag_updated = wall_time();
+        app_.state.wallabag_format = ARTICLE_FORMAT; // the rebuild is done
         app_.state.mark_dirty();
     }
     recount();
-    LOG_I("wallabag: %s%s; %d archived, %d unread, %d downloaded, %d failed, %zu removed", r.update ? "update" : "archive",
-          r.cancelled ? " cancelled" : r.error.empty() ? " done" : " failed", static_cast<int>(r.archived.size()), r.unread,
-          r.downloaded, r.failed, r.listed ? r.remove.size() : size_t(0));
+    LOG_I("wallabag: %s%s; %d archived, %d unread, %d downloaded, %d rebuilt, %d failed, %zu removed",
+          r.update ? "update" : "archive", r.cancelled ? " cancelled" : r.error.empty() ? " done" : " failed",
+          static_cast<int>(r.archived.size()), r.unread, r.downloaded, r.rebuilt, r.failed,
+          r.listed ? r.remove.size() : size_t(0));
     const bool again = archive_again_;
     archive_again_ = false;
     if (r.cancelled) { // stopped from the menu (quitting never gets here)

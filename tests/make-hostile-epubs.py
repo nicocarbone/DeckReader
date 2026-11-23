@@ -15,8 +15,10 @@ And small, well-formed books for rendering tests (D26):
                      Ebooks does, and "↩️" (U+FE0F)
   vs-without.epub    the same text without the variation selectors
   line-art.epub      one page holding a black-on-transparent PNG
+  background-art.epub the same PNG as a CSS background image (D36)
 """
 
+import base64
 import os
 import struct
 import sys
@@ -125,6 +127,17 @@ def main():
     ink = lambda x, y: (0, 0, 0, 255) if min(x, y, 299 - x, 299 - y) < 8 or abs(x - y) < 5 else (0, 0, 0, 0)
     text_epub(os.path.join(out, "line-art.epub"), ['<img src="art.png" alt="Line art"/>'],
               [("art.png", png_rgba(300, 300, ink))])
+    # The same picture as a background: decoration (and MathML's radical
+    # sign), never on a plate.
+    # (A data: URL, as the radical's: a relative url() in a style attribute
+    # isn't resolved against the book.)
+    art = base64.b64encode(png_rgba(300, 300, ink)).decode()
+    chapter = ('<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml">'
+               '<head><title>Background</title></head><body><div style="width: 300px; height: 300px; '
+               'background-image: url(data:image/png;base64,%s); background-repeat: no-repeat">'
+               '\u00a0</div></body></html>' % art)
+    epub(os.path.join(out, "background-art.epub"),
+         [("OEBPS/content.opf", OPF % ""), ("OEBPS/toc.ncx", NCX), ("OEBPS/c.xhtml", chapter.encode())])
     return 0
 
 

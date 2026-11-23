@@ -143,7 +143,8 @@ std::unique_ptr<Menu> make_about_menu(App& app) {
     row("Book engine", "crengine-ng (GPL-2.0-or-later)");
     row("Built on", "SDL3, FreeType, HarfBuzz, FriBiDi");
     row("Also", "libunibreak, utf8proc, nlohmann/json, libcurl");
-    row("Fonts", "Literata, Inter, Atkinson Hyperlegible (OFL)");
+    row("Math", "Temml, QuickJS-ng (MIT)");
+    row("Fonts", "Literata, Inter, Atkinson Hyperlegible, STIX Two Math (OFL)");
     row("Hyphenation", "TeX patterns, via crengine-ng");
     row("Companion app", "DeckVideoPlayer");
 

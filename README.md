@@ -45,8 +45,8 @@ look, same buttons, same installer.
   read (✓) or unread (back to 0%) from the menu.
 - **Web articles from wallabag**: save articles on your phone with
   wallabag (the hosted wallabag.it or your own server) and read them on
-  the Deck, pictures included, from an **Articles** shelf. Mark one as
-  read and it's archived in wallabag too.
+  the Deck, pictures and math included, from an **Articles** shelf. Mark
+  one as read and it's archived in wallabag too.
 - **Contents, bookmarks, chapter jumps** with the D-pad, and a
   **left-stick scrub** through the whole book with a live preview.
 - **Status overlay** with chapter, pages, percentage, battery and clock

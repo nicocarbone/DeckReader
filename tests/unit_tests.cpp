@@ -19,6 +19,7 @@
 #include "metacache.h"
 #include "settings.h"
 #include "state.h"
+#include "texmath.h"
 #include "util.h"
 #include "wallabag.h"
 
@@ -825,6 +826,20 @@ TEST(engine_line_art_plate_in_dark_themes) {
         } else {
             CHECK(plate < 1000);
         }
+        // A background image gets no plate (MathML's radical sign is one, D36).
+        Book bg;
+        CHECK(bg.open(std::string(dir) + "/background-art.epub", &err));
+        CHECK(bg.configure(s, W, H, 1.0f));
+        bg.set_colors(THEMES[t].bg, THEMES[t].text);
+        CHECK(bg.render(0, px.data(), W, H));
+        int bg_plate = 0, bg_ink = 0;
+        for (uint32_t p : px) {
+            bg_plate += (p & 0xFFFFFF) == THEMES[t].text;
+            bg_ink += (p & 0xFFFFFF) == 0;
+        }
+        CHECK(bg_plate < 1000);
+        if (!THEMES[t].dark)
+            CHECK(bg_ink > 3000); // it is drawn
     }
     engine::shutdown();
 }
@@ -1148,6 +1163,12 @@ TEST(wallabag_helpers) {
     SyncPlan plan = plan_sync({{5, "", 0}, {4, "", 0}, {3, "", 0}, {2, "", 0}, {5, "", 0}}, {2, 3, 4, 9}, {3});
     CHECK_EQ(plan.download.size(), 1u);
     CHECK(!plan.download.empty() && plan.download[0].id == 5);
+    CHECK(plan.remove == std::vector<int64_t>({3, 9}));
+    // Rebuilding (articles of an older format, D36): the unread ones on the
+    // Deck come again; the rest is the same.
+    plan = plan_sync({{5, "", 0}, {4, "", 0}, {3, "", 0}, {2, "", 0}}, {2, 3, 4, 9}, {3}, true);
+    CHECK_EQ(plan.download.size(), 3u);
+    CHECK(plan.download.size() == 3 && plan.download[0].id == 5 && plan.download[1].id == 4 && plan.download[2].id == 2);
     CHECK(plan.remove == std::vector<int64_t>({3, 9}));
 
     CHECK_EQ(form_encode({{"a b", "c&d=\xC3\xA9+%"}, {"x", ""}}), "a%20b=c%26d%3D%C3%A9%2B%25&x=");
@@ -1729,6 +1750,293 @@ TEST(wallabag_sync_fake_server) {
     CHECK_EQ(wr.downloaded, 1);
     CHECK(is_file(dir + "/8.epub"));
     CHECK(wakes >= 2);
+}
+
+// --- math in articles (D36) -------------------------------------------------------
+
+// The formulas find_tex sees, as "i:tex" / "d:tex".
+static std::vector<std::string> tex_of(const std::string& html) {
+    std::vector<std::string> out;
+    for (const TexSpan& s : find_tex(html)) {
+        out.push_back((s.display ? "d:" : "i:") + s.tex);
+        CHECK(s.begin < s.end && s.end <= html.size());
+    }
+    return out;
+}
+using Strs = std::vector<std::string>;
+
+TEST(tex_find) {
+    // MathJax's delimiters, as in the owner's article.
+    CHECK(tex_of("<p>a matrix \\(E \\in \\mathbb{R}^{M \\times d}\\), with \\(M\\)</p>") ==
+          Strs({"i:E \\in \\mathbb{R}^{M \\times d}", "i:M"}));
+    CHECK(tex_of("<p>Then:</p>\\[S = \\int N\\,d\\lambda.\\]<p>x</p>") == Strs({"d:S = \\int N\\,d\\lambda."}));
+    CHECK(tex_of("<p>$$a^2 + b^2$$</p>") == Strs({"d:a^2 + b^2"}));
+    CHECK(tex_of("\\begin{align}a &amp;= b \\\\ c &amp;= d\\end{align}") ==
+          Strs({"d:\\begin{align}a &= b \\\\ c &= d\\end{align}"}));
+    CHECK(tex_of("\\begin{equation*}x\\end{equation*}") == Strs({"d:\\begin{equation*}x\\end{equation*}"}));
+    CHECK(tex_of("\\begin{pmatrix}1\\end{pmatrix}").empty()); // only inside a formula
+    // Entities are decoded; braces hold delimiters; \\ and \$ are units.
+    CHECK(tex_of("\\(a &lt; b &amp;&amp; c&gt;d\\)") == Strs({"i:a < b && c>d"}));
+    CHECK(tex_of("\\(\\text{\\)}\\)") == Strs({"i:\\text{\\)}"}));
+    CHECK(tex_of("\\(a \\\\ b\\)") == Strs({"i:a \\\\ b"}));
+    CHECK(tex_of("\\\\(x\\)").empty());
+    CHECK(tex_of("$$\\$5$$") == Strs({"d:\\$5"}));
+    // $..$: pandoc's rule, and only what reads like math.
+    CHECK(tex_of("<p>Let $x + y = 1$ and $\\alpha$, $dx$, $f(x)$.</p>") ==
+          Strs({"i:x + y = 1", "i:\\alpha", "i:dx", "i:f(x)"}));
+    CHECK(tex_of("It costs $5 and $10, or $20.").empty());
+    CHECK(tex_of("between $5 and 10$ dollars").empty());
+    CHECK(tex_of("from $5-$10 a day").empty());
+    CHECK(tex_of("\\$5 and \\$6").empty());
+    CHECK(tex_of("a $ x$ b").empty());       // a space after the opening dollar
+    CHECK(tex_of("a $x $ b").empty());       // ... or before the closing one
+    CHECK(tex_of("$x$5 and $y$") == Strs({"i:y"})); // a digit after the closing one
+    CHECK(tex_of("$n log n$").empty());      // prose-like: left alone
+    // Never in code, attributes, comments, scripts, SVG or MathML.
+    CHECK(tex_of("<code>\\(x\\)</code> <pre>$$y$$</pre> <kbd>$a^2$</kbd>").empty());
+    CHECK(tex_of("<pre><code>\\(a\\)</code>\\(b\\)</pre>\\(c\\)") == Strs({"i:c"}));
+    CHECK(tex_of("<a title=\"\\(x\\)\" href='$y^2$'>t</a>").empty());
+    CHECK(tex_of("<!-- \\(x\\) -->\\(z\\)") == Strs({"i:z"}));
+    CHECK(tex_of("<script>if (a<b) s = '\\(x\\)';</script><style>p{}</style>\\(z\\)") == Strs({"i:z"}));
+    CHECK(tex_of("<svg><text>$x^2$</text></svg><m:math><m:mi>\\(y\\)</m:mi></m:math>\\(z\\)") == Strs({"i:z"}));
+    CHECK(tex_of("<pre/>\\(z\\)") == Strs({"i:z"})); // self-closing: nothing to skip
+    // A formula doesn't span tags; unclosed and empty ones are text.
+    CHECK(tex_of("\\(a <em>b</em>\\)").empty());
+    CHECK(tex_of("\\(x").empty());
+    CHECK(tex_of("$$x").empty());
+    CHECK(tex_of("\\(\\) $$ $$").empty());
+    // Limits.
+    CHECK(tex_of("\\(" + std::string(TEX_MAX_INLINE + 1, 'x') + "\\)").empty());
+    CHECK_EQ(tex_of("\\[" + std::string(TEX_MAX_INLINE + 1, 'x') + "\\]").size(), 1u);
+    std::string many;
+    for (size_t i = 0; i < TEX_MAX_FORMULAS + 20; i++)
+        many += "\\(x\\) ";
+    CHECK_EQ(find_tex(many).size(), TEX_MAX_FORMULAS);
+    CHECK(tex_of("<p>Plain text, no math. <b>Bold</b> and \xE2\x82\xAC" "5.</p>").empty());
+}
+
+TEST(tex_replace) {
+    const std::string html = "<p>Let \\(x\\), \\(bad\\) and $$y$$.</p>";
+    int ok = 0, bad = 0;
+    const std::string out = replace_tex(
+        html, find_tex(html),
+        [](const std::string& tex, bool display, std::string& mathml) {
+            if (tex == "bad")
+                return false;
+            mathml = std::string("<math") + (display ? " display=\"block\"" : "") + ">" + tex + "</math>";
+            return true;
+        },
+        &ok, &bad);
+    CHECK_EQ(out, "<p>Let <math>x</math>, \\(bad\\) and <math display=\"block\">y</math>.</p>");
+    CHECK_EQ(ok, 2);
+    CHECK_EQ(bad, 1);
+    CHECK_EQ(replace_tex("no math", {}, nullptr), "no math");
+}
+
+TEST(tex_break_points) {
+    // A list breaks after ", <space>" only (the space stays on its line)...
+    CHECK_EQ(mathml_break_points("<math display=\"block\"><mrow><mi>S</mi><mo>=</mo><mi>a</mi><mo>,</mo>"
+                                 "<mspace width=\"2em\"></mspace><mi>M</mi><mo form=\"infix\">&lt;</mo><mi>b</mi></mrow></math>"),
+             "<math display=\"block\"><mrow><mi>S</mi><mo>=</mo><mi>a</mi><mo>,</mo>"
+             "<mspace width=\"2em\"></mspace></mrow><mrow><mi>M</mi><mo form=\"infix\">&lt;</mo><mi>b</mi></mrow></math>");
+    // ... other formulas after each relation.
+    CHECK_EQ(mathml_break_points("<math display=\"block\"><mrow><mi>a</mi><mo>=</mo><mi>b</mi><mo>+</mo><mi>c</mi>"
+                                 "<mo>\xE2\x89\xA4</mo><mi>d</mi></mrow></math>"),
+             "<math display=\"block\"><mrow><mi>a</mi><mo>=</mo></mrow><mrow><mi>b</mi><mo>+</mo><mi>c</mi>"
+             "<mo>\xE2\x89\xA4</mo></mrow><mrow><mi>d</mi></mrow></math>");
+    // Nothing to split, or not the shape Temml makes: unchanged.
+    for (const char* m : {"<math display=\"block\"><mrow><mi>a</mi><mo>+</mo><mi>b</mi></mrow></math>",
+                          "<math display=\"block\"><mi>x</mi></math>",
+                          "<math display=\"block\"><mrow><mi>x</mi><mo>=</mo></mrow></math>",
+                          "<math display=\"block\"><mtable><mtr><mtd><mi>x</mi><mo>=</mo><mi>y</mi></mtd></mtr></mtable></math>",
+                          "<math display=\"block\"><mrow><mover><mi>x</mi><mo>=</mo></mover><mi>y</mi></mrow></math>",
+                          "<math><mrow><mi>a</mi></mrow><mrow><mi>b</mi></mrow></math>", "<math><mrow><mi>a</mi>",
+                          ""})
+        CHECK_EQ(mathml_break_points(m), m);
+    // Nested relations stay inside their group.
+    const std::string nested = "<math display=\"block\"><mrow><mrow><mi>a</mi><mo>=</mo><mi>b</mi></mrow>"
+                               "<mo>+</mo><mi>c</mi></mrow></math>";
+    CHECK_EQ(mathml_break_points(nested), nested);
+}
+
+TEST(tex_to_mathml_temml) {
+    const char* temml = test_env("DECKREADER_TEST_TEMML");
+    if (!temml) {
+        std::fprintf(stderr, "  (skipped tex_to_mathml_temml: set DECKREADER_TEST_TEMML)\n");
+        return;
+    }
+    std::atomic<bool> cancel{false};
+    TexToMathML m;
+    std::string err, out;
+    CHECK(!m.usable());
+    CHECK(!TexToMathML().load("/nonexistent/temml.min.js", &cancel, &err) && !err.empty());
+    const uint64_t t0 = mono_ms();
+    CHECK(m.load(temml, &cancel, &err));
+    CHECK(m.usable());
+    std::fprintf(stderr, "  (Temml loaded in %llu ms)\n", static_cast<unsigned long long>(mono_ms() - t0));
+
+    CHECK(m.convert("E \\in \\mathbb{R}^{M \\times d}", false, out));
+    CHECK(starts_with(out, "<math xmlns=\"http://www.w3.org/1998/Math/MathML\""));
+    CHECK(out.find("display=\"block\"") == std::string::npos);
+    CHECK(out.find("<msup>") != std::string::npos && out.find("\xE2\x84\x9D") != std::string::npos); // ℝ
+    CHECK(out.find("</math>") != std::string::npos);
+    CHECK(m.convert("S = \\int N(\\lambda)\\,p_s(\\lambda)\\,d\\lambda", true, out));
+    CHECK(out.find("display=\"block\"") != std::string::npos && out.find("\xE2\x88\xAB") != std::string::npos); // ∫
+    {
+        // A long list of formulas breaks after each ", \qquad".
+        CHECK(m.convert("S = \\int N\\,d\\lambda,\\qquad M = \\int N\\,d\\lambda,\\qquad L = \\int N\\,d\\lambda.", true, out));
+        size_t groups = 0;
+        for (size_t p = 0; (p = out.find("</mrow><mrow>", p)) != std::string::npos; p++)
+            groups++;
+        CHECK_EQ(groups, 2u);
+        CHECK_EQ(mathml_break_points(out), out);
+        // Inline ones: Temml's own wrap (after relations and operators).
+        CHECK(m.convert("a + b = c", false, out));
+        CHECK(out.find("</mrow><mrow>") != std::string::npos);
+    }
+    CHECK(m.convert("\\begin{align}a &= b \\\\ c &= d\\end{align}", true, out));
+    CHECK(m.convert("\\frac{a}{b} < \\sqrt[3]{x} \\& \\text{if } \"q\"", false, out));
+    CHECK(out.find("&lt;") != std::string::npos && out.find("&amp;") != std::string::npos &&
+          out.find('<', out.find("&lt;")) != std::string::npos); // escaped for XML
+    // Refused: invalid TeX, untrusted commands, macro loops, deep nesting.
+    CHECK(!m.convert("\\frac{", false, out));
+    CHECK(!m.convert("\\href{https://example.com}{x}", false, out) || out.find("example.com") == std::string::npos);
+    CHECK(!m.convert("\\includegraphics{/etc/passwd}", false, out) || out.find("passwd") == std::string::npos);
+    CHECK(!m.convert("\\def\\a{\\a}\\a", false, out));
+    CHECK(!m.convert("\\def\\a{\\a\\a}\\a", false, out));
+    CHECK(!m.convert(std::string(20000, '{') + "x" + std::string(20000, '}'), true, out));
+    CHECK(m.usable()); // none of these stops the engine
+    CHECK(m.convert("x^2", false, out));
+    // Stopped from the menu: the conversion ends and the engine with it.
+    cancel = true;
+    CHECK(!m.convert("x^2", false, out));
+    CHECK(!m.usable());
+
+    // The MathML is a page the engine lays out and draws, with the math
+    // font (D36).
+    const char* fonts = test_env("DECKREADER_TEST_FONTS");
+    const char* data = test_env("DECKREADER_TEST_ENGINE_DATA");
+    if (!fonts || !data)
+        return;
+    cancel = false;
+    CHECK(m.load(temml, &cancel, &err));
+    const std::string html = "<p>A matrix \\(E \\in \\mathbb{R}^{M \\times d}\\) and</p>"
+                             "\\[S = \\int N(\\lambda)\\,p_s(\\lambda)\\,d\\lambda\\]<p>$$\\frac{1}{x}$$</p>"
+                             "<p>$$\\frac{1}{\\sqrt{2\\pi\\sigma^2}}$$</p>";
+    int ok = 0, bad = 0;
+    ArticleBook ab;
+    ab.id = 7;
+    ab.title = "Math";
+    ab.html = replace_tex(html, find_tex(html),
+                          [&](const std::string& t, bool d, std::string& o) { return m.convert(t, d, o); }, &ok, &bad);
+    CHECK_EQ(ok, 4);
+    CHECK_EQ(bad, 0);
+    const std::string dir = temp_dir();
+    CHECK(write_file_atomic(dir + "/7.epub", make_article_epub(ab)));
+    CHECK_EQ(engine::check_book_file(dir + "/7.epub"), "");
+    CHECK(engine::init(fonts, data, temp_dir()));
+    std::vector<std::string> faces = engine::font_faces();
+    CHECK(std::find(faces.begin(), faces.end(), "STIX Two Math") != faces.end());
+    Book b;
+    CHECK(b.open(dir + "/7.epub", &err));
+    const ThemeDef &dark = THEMES[0], &day = THEMES[3];
+    b.set_colors(dark.bg, dark.text); // laid out in a dark theme, as the reader does
+    ReaderSettings s;
+    CHECK(b.configure(s, 1280, 800, 1.0f));
+    CHECK(b.page_count() >= 1);
+    std::vector<uint32_t> px(1280 * 800);
+    CHECK(b.render(0, px.data(), 1280, 800));
+    // Y switches to Day without a new layout: the fraction bars, the
+    // radical sign and its bar follow, as the text does. A rule left in the
+    // dark theme's colour is a run of such pixels (text edges blended
+    // between Day's greys can hit that colour, one pixel at a time).
+    auto longest_run = [&](uint32_t colour) {
+        int best = 0;
+        for (int y = 0; y < 800; y++)
+            for (int x = 0, run = 0; x < 1280; x++) {
+                run = (px[static_cast<size_t>(y) * 1280 + x] & 0xFFFFFF) == colour ? run + 1 : 0;
+                best = std::max(best, run);
+            }
+        return best;
+    };
+    CHECK(longest_run(dark.text) >= 10); // the bars, in the dark theme
+    b.set_colors(day.bg, day.text);
+    CHECK(b.render(0, px.data(), 1280, 800));
+    CHECK(longest_run(dark.text) < 4);
+    CHECK(longest_run(day.text) >= 10);
+    b.close();
+    engine::shutdown();
+}
+
+TEST(wallabag_sync_math) {
+    const char* script = test_env("DECKREADER_TEST_FAKE_WALLABAG");
+    const char* temml = test_env("DECKREADER_TEST_TEMML");
+    if (!script || !temml) {
+        std::fprintf(stderr, "  (skipped wallabag_sync_math: set DECKREADER_TEST_FAKE_WALLABAG and _TEMML)\n");
+        return;
+    }
+    http_global_init();
+    FakeWallabag fake(script);
+    CHECK(fake.port > 0);
+    if (fake.port <= 0)
+        return;
+    CHECK(fake.reset(R"({"entries": [
+        {"id": 30, "title": "Colours", "created_at": "2026-11-20T08:00:00Z",
+         "content": "<p>A matrix \\(E \\in \\mathbb{R}^{M \\times d}\\) costs $5 and $10.</p>\\[S = \\int N\\,d\\lambda\\]<p>Broken: \\(\\frac{\\).</p><pre>\\(code\\)</pre>"},
+        {"id": 31, "title": "Plain", "created_at": "2026-11-20T09:00:00Z", "content": "<p>No math.</p>"}]})"));
+    const std::string dir = temp_dir();
+    std::atomic<bool> cancel{false};
+    SyncRequest req;
+    req.settings = {fake.url(), "cid", "secret", "reader", "pa ss&w\xC3\xB6rd=1+2%", 10};
+    req.settings.images = false;
+    req.dir = dir;
+    req.temml_js = temml;
+    SyncResult r = run_sync(req, cancel, nullptr);
+    CHECK_EQ(r.error, "");
+    CHECK_EQ(r.downloaded, 2);
+    std::string page = zip_entries(dir + "/30.epub")["OEBPS/article.xhtml"];
+    CHECK(page.find("<math xmlns=\"http://www.w3.org/1998/Math/MathML\"><mrow><mi>E</mi>") != std::string::npos ||
+          page.find("<math xmlns=\"http://www.w3.org/1998/Math/MathML\"") != std::string::npos);
+    CHECK(page.find("display=\"block\"") != std::string::npos);
+    CHECK(page.find("\\mathbb") == std::string::npos && page.find("\\int") == std::string::npos);
+    CHECK(page.find("costs $5 and $10.") != std::string::npos); // prices stay
+    CHECK(page.find("\\(\\frac{\\)") != std::string::npos);     // fails: stays as TeX
+    CHECK(page.find("<pre>\\(code\\)</pre>") != std::string::npos);
+    CHECK_EQ(engine::check_book_file(dir + "/30.epub"), "");
+
+    // Made by an older version: downloaded again once (ARTICLE_FORMAT).
+    write_file_atomic(dir + "/31.epub", "old format");
+    req.local = {30, 31};
+    r = run_sync(req, cancel, nullptr);
+    CHECK_EQ(r.downloaded, 0);
+    CHECK_EQ(r.rebuilt, 0);
+    std::string data;
+    CHECK(read_file(dir + "/31.epub", data) && data == "old format");
+    // Only articles with math are made again: 31 has none and keeps its
+    // file. (30, made above with math, has TeX in wallabag: made again.)
+    req.rebuild = true;
+    r = run_sync(req, cancel, nullptr);
+    CHECK_EQ(r.error, "");
+    CHECK_EQ(r.downloaded, 0);
+    CHECK_EQ(r.rebuilt, 1);
+    CHECK(read_file(dir + "/31.epub", data) && data == "old format");
+
+    // Without Temml (a broken install): the articles still come, with TeX.
+    req.rebuild = true;
+    req.temml_js = "/nonexistent/temml.min.js";
+    r = run_sync(req, cancel, nullptr);
+    CHECK_EQ(r.error, "");
+    CHECK_EQ(r.rebuilt, 1);
+    CHECK(zip_entries(dir + "/30.epub")["OEBPS/article.xhtml"].find("\\mathbb{R}") != std::string::npos);
+
+    // The format is kept in state.json.
+    StateStore st;
+    st.wallabag_format = ARTICLE_FORMAT;
+    StateStore back;
+    CHECK(back.from_json(st.to_json()));
+    CHECK_EQ(back.wallabag_format, ARTICLE_FORMAT);
+    CHECK(back.from_json("{\"version\": 1, \"books\": {}}"));
+    CHECK_EQ(back.wallabag_format, 0);
 }
 
 int main() {

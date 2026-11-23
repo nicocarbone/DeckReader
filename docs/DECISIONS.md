@@ -789,3 +789,192 @@ none left out, about 14 s.
   They only change the Deck; the wallabag one archives the article and
   removes it (D31). No new button: the menu, as in DeckVideoPlayer.
 
+
+## D35. Footnotes and links (proposed for v0.3.3, not built yet)
+
+- **Why first among the reading-comfort items:** "links and footnotes
+  can't be followed" is the one limitation left from 0.1.0 that ordinary
+  books hit. Four of the nine sample books have notes, 1,253 note links
+  in all, every one pointing to an endnotes file. Only one marks them up
+  (`epub:type="noteref"`); the others are plain numbers that link to the
+  note.
+- **Which links:** every link on the screen that points inside the book.
+  crengine merges an EPUB's files into one document and rewrites
+  `file.xhtml#id` to `#id`, so the target is found with `getNodeById`.
+  A link is a **note** when it is marked (`epub:type="noteref"`,
+  `role="doc-noteref"`), when its target is marked (`epub:type` footnote,
+  endnote, rearnote or note; `role="doc-footnote"`, `doc-endnote`;
+  `<aside>`), or, the common case, when its text is a short marker: up to
+  four characters of digits, letters, roman numerals, `*`, `†`, `‡` or
+  `§`, with or without brackets or `<sup>`. Any other link is a **jump**.
+  Web links (`http:`, `mailto:`) are never opened: there is no browser in
+  Game Mode, and the network is used only on request (D31). They show
+  their address instead.
+- **Controller: the right stick**, which is unused in the reader (and in
+  DeckVideoPlayer), so no button changes meaning (D8):
+  - Pushing it highlights the first link on the screen, with a teal pill
+    behind it. Right or down moves to the next link, left or up to the
+    previous one, in reading order (left page, then right).
+  - **A opens the highlighted link.** With nothing highlighted, A shows
+    the overlay as before.
+  - **B removes the highlight**: B dismisses what is on screen first, as
+    DeckVideoPlayer's D63 asks. Turning the page also removes it.
+  - **The overlay hint bar** adds the right stick glyph with "Notes" only
+    when the screen has links.
+  - **Keyboard:** `n` for the next link and Shift+`n` for the previous
+    one; Enter opens the highlighted link.
+  - **Options set aside:**
+    - R3 (pressing the stick in) is a single action, so it can't pick one
+      note among several.
+    - A "Notes" item in the reading menu takes three presses, for
+      something done many times a chapter.
+    - The D-pad, A, B, X, Y and the bumpers already have reader meanings.
+- **Touch:** a tap on a link opens it. The tap area is at least 48 units
+  square, because superscript markers are tiny. Taps elsewhere keep the
+  page-turn and overlay zones.
+- **Opening a note shows it in a panel** at the bottom of the screen,
+  without moving the page:
+  - It uses the interface look (dark panel, Inter) and takes at most 40%
+    of the height. D-pad up and down scroll a long note.
+  - The right stick moves to the next or previous link and the panel
+    follows, so the notes on a screen can be read in a row.
+  - A ("Go to note") jumps to the note in the book. B closes the panel.
+  - **Where the text comes from:** the target element. When the target is
+    an empty or inline anchor, it is the block that holds it, plus the
+    following blocks up to the next note's target or a heading. The
+    back-link and the leading number are dropped.
+  - The text is plain, in paragraphs, up to 2,000 characters. "Go to
+    note" shows the rest.
+- **Jumps and "Go to note"** move the reader to the target and push the
+  place they left onto a back stack, kept as XPointers (never pages; up
+  to 20 places):
+  - While the stack isn't empty, a pill shows "B Back to page N" at the
+    bottom of the screen. B goes back there before it does its usual
+    return to the library. Page turns keep the stack, so a referenced
+    section can be read before going back.
+  - The stack isn't saved: the saved position is where the reader is
+    (D6).
+- **Safety (D5, D22):** links are book input.
+  - Only `#id` targets are followed, by our own code. crengine's
+    `goLink` is never called: for a link without `#` it opens another
+    file from the archive or the disk and replaces the document.
+  - Each screen's link list, the note text (characters and blocks) and
+    the back stack all have limits.
+  - Hostile fixtures cover: links to missing ids, links to themselves,
+    loops, huge notes and `../` file links.
+- **Not now:**
+  - In-page footnotes, printed at the bottom of the page through
+    crengine's `-cr-hint: footnote-inpage`, as KOReader does. They only
+    work for books that mark their notes, which is one of the nine. They
+    also change the pagination and move text away from where it was
+    written. This could be a setting later.
+  - Notes in the book's own style (italics, pictures), by rendering the
+    fragment through crengine. To do only if plain text proves too poor.
+- **Tests:**
+  - Unit tests for the marker heuristic, the note text and the back
+    stack, on generated EPUBs: notes marked up, plain numbers to an
+    endnotes file, and notes in the same file.
+  - A `rstick:` command for headless scripts.
+  - Screenshots at both sizes, then the Deck.
+- **When built, update:** D8, REQUIREMENTS §5.1 (a right stick row; A in
+  the reader), the README controls and the hint bars.
+
+## D36. Math in articles: TeX to MathML (v0.3.2)
+
+- **Asked by the owner:** articles with formulas. Sites that typeset math
+  in the browser (MathJax, KaTeX) send raw TeX, and wallabag saves the
+  page without running scripts, so the article showed text like
+  `\(E \in \mathbb{R}^{M \times d}\)`.
+- **Drawing it: crengine-ng's MathML**, which is built in
+  (`MATHML_SUPPORT`, KOReader's code):
+  - Tried first on the owner's article with its TeX converted to MathML
+    by hand: inline and display formulas, integrals, subscripts and ℝ
+    came out right, in the theme's colours and at the reading size.
+  - It needs a font with an OpenType math table: **STIX Two Math** 2.13
+    (OFL, 0.8 MB), registered with the bundled fonts (D9). crengine picks
+    it for `<math>` from its own list whenever the text font has no math
+    table, so it isn't one of the reading fonts.
+  - It also helps EPUB 3 books that already contain MathML.
+- **Converting it, when the article's EPUB is made** (in the articles
+  thread, during *Update articles*; nothing at reading time, D1):
+  - **Temml** 0.14 (MIT): KaTeX's TeX parser with MathML output, run in
+    **QuickJS-ng** 0.18 (MIT): a small JavaScript engine, statically
+    linked.
+  - Temml's options:
+    - `trust: false`: no `\href`, `\url` or `\includegraphics`.
+    - `maxExpand`: stops macro loops.
+    - `maxSize`.
+    - `throwOnError`: a formula that fails stays as its TeX text.
+    - `xml`: namespaced MathML that is valid XHTML.
+  - **The engine's limits:**
+    - No I/O at all (no quickjs-libc: plain ECMAScript).
+    - A memory limit and a stack limit.
+    - A time limit per formula and per article, through the interrupt
+      handler, which also stops at *Stop updating articles*.
+  - **Set aside:**
+    - Our own converter: LaTeX's long tail, and the requirements (§3)
+      prefer mature libraries.
+    - The C converters (itex2MML, blahtex): old, and they cover less.
+    - MathJax or KaTeX themselves: bigger, and MathML is a by-product of
+      KaTeX.
+    - math-core: it would put a Rust toolchain in the Flatpak build.
+    - Pictures of formulas (MicroTeX): a fixed size and fixed colours.
+- **Finding the TeX** (`src/texmath.cpp`, pure, unit-tested):
+  - **Only in the article's text:** never in tags, attributes or
+    comments, nor inside `<code>`, `<pre>`, `<kbd>`, `<samp>`,
+    `<script>`, `<style>`, `<textarea>`, `<svg>` or `<math>`. A formula
+    lies within one run of text; it doesn't span tags.
+  - **The delimiters:**
+    - MathJax's defaults: `\(…\)` inline; `\[…\]` and `$$…$$` displayed.
+    - The display environments: `\begin{equation}…\end{equation}`,
+      `align`, `gather`, `multline` and `eqnarray`, starred or not.
+  - **`$…$` inline, only by pandoc's rule:**
+    - The opening `$` is followed by a non-space. The closing one comes
+      after a non-space and is not followed by a digit.
+    - The content must also look like math: it holds a backslash, `^`,
+      `_`, `{` or `=`, or it has no word of two or more letters between
+      spaces.
+    - So "$5 and $10" and "between $5 and 10$" stay text, and `\$` is a
+      dollar sign.
+  - **Limits:** entities are decoded first (`&lt;` is `<`). An inline
+    formula has up to 2,000 characters and a displayed one up to 10,000,
+    with at most 500 formulas per article.
+- **Line breaks:** crengine draws each `<mrow>` unbroken, but breaks
+  one wider than the page anywhere inside it. Temml puts a displayed
+  formula in a single `<mrow>`, which broke "N(λ)" in two at 4K.
+  - Inline formulas use Temml's `wrap: "tex"`: they break after
+    relations and operators, as in TeX.
+  - Displayed ones are split at their top level
+    (`mathml_break_points`). A list ("S = …,\qquad M = …") breaks only
+    after each comma followed by a space, so no "M =" is left at the end
+    of a line. Any other formula breaks after each relation.
+- **Two engine fixes the math showed** (D26's plate, and colours):
+  - MathML's radical sign is a small SVG drawn as a CSS background
+    image. D26's plate turned it into a solid block on dark themes.
+    Background images now get no plate: they are decoration, not line art
+    (`crengine-ng-image-plate.patch`).
+  - Fraction bars and the radical's bar are borders without a colour of
+    their own, and the radical's stroke takes the text colour too.
+    crengine took both from the style, which holds the text colour of the
+    layout. Y changes the theme without a new layout, so they kept the
+    old theme's colour: light grey on Day. Now they take the text colour
+    when drawn, as text does (`crengine-ng-current-colour.patch`, the
+    seventh). Table borders in books had the same fault.
+  - `scripts/dev-build.sh` now starts a module's checkout again from its
+    commit when its patches change, as flatpak-builder does: these two
+    patches touch neighbouring lines, so they can't be undone one by one.
+- **Articles already on the Deck** were made without math:
+  - An article format number goes into state.json (`wallabag_format`,
+    2 from this version).
+  - The first update after it gets the text of the unread articles again
+    and makes again only those with TeX, pictures included. The others
+    keep their files, so their pictures aren't fetched twice (a slow site
+    took a minute). Then it records 2; if that update fails or is
+    stopped, the next one does it.
+  - Reading positions stay valid: paragraphs keep their places.
+- **Not now:**
+  - MathML already in the page: KaTeX rendered on the server sends its
+    `<math>` plus a copy in HTML (`katex-html`).
+  - MathJax 2's `<script type="math/tex">`.
+  - Both wait for a sample of what wallabag keeps of them (it removes
+    scripts).

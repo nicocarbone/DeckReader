@@ -27,7 +27,7 @@
       <li>Reading position saved on every page turn, safe against sleep and power loss</li>
       <li>Library from ~/Books, the microSD card and USB drives, with covers and recently read books</li>
       <li>Status overlay with chapter, pages, battery and clock, and an optional progress line</li>
-      <li>Web articles saved with wallabag, with their pictures, read like books</li>
+      <li>Web articles saved with wallabag, with their pictures and math, read like books</li>
       <li>Works offline; the network is used only for wallabag, when you ask. No account, no tracking</li>
     </ul>
   </description>
@@ -75,6 +75,9 @@
   <url type="donation">https://ko-fi.com/nicocarbone</url>
   <releases>
     <!-- Set the date when tagging the release (docs/DEVELOPMENT.md §6). -->
+    <release version="0.3.2" date="2026-11-23">
+      <description><p>Math in web articles: formulas that sites write in TeX (for MathJax or KaTeX) show as math, with a bundled math font (STIX Two Math) that EPUB books with MathML use too.</p></description>
+    </release>
     <release version="0.3.1" date="2026-11-21">
       <description><p>Any book or article can be marked as read (shown with a check mark) or as unread (back to 0%) from the library menu.</p></description>
     </release>

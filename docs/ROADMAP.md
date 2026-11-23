@@ -55,9 +55,20 @@ Web articles saved on the phone with [wallabag](https://wallabag.org)
   library menu, as DeckVideoPlayer's watched/unwatched (D34); confirmed
   on the owner's Steam Deck (test bundle v0.3.1-test1).
 
+## v0.3.2: math in articles (released 2026-11-23)
+
+- TeX formulas in web articles (MathJax, KaTeX) become MathML when the
+  article is downloaded, drawn by crengine with a bundled math font
+  (D36): Temml in QuickJS, STIX Two Math. Articles already on the Deck
+  with math are made again at the first update. Confirmed on the owner's
+  Steam Deck (test bundle v0.3.2-test1).
+- Later, with a sample of what wallabag keeps: MathML already in a page
+  (KaTeX rendered on the server) and MathJax 2's `<script type="math/tex">`.
+
 ## v0.3.x: reading comfort
 
-- Footnotes in a popup (links followed with the controller).
+- Footnotes in a popup (links followed with the controller): designed
+  in D35, next (v0.3.3).
 - Fallback fonts for CJK, Arabic and Hebrew text (Noto subsets; D9).
 - Optional dyslexia-oriented font (OpenDyslexic).
 - "Open with" from Desktop Mode: quit after closing the book

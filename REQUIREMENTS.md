@@ -152,7 +152,7 @@ The Steam and "…" buttons stay with Steam. Keyboard keys match `DeckVideoPlaye
 
 - **Web articles from wallabag** (v0.3, D31): the unread articles of a
   wallabag account (wallabag.it or self-hosted), saved on the phone,
-  made into EPUBs on the Deck (pictures included) into an
+  made into EPUBs on the Deck (pictures and math included, D36) into an
   Articles source on request, read offline like books, and marked as read
   in wallabag from the Deck. Account details in `config.ini`; nothing
   shown until they are set; the network used only on request.

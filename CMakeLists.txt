@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(deckreader VERSION 0.3.1 LANGUAGES C CXX)
+project(deckreader VERSION 0.3.2 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -29,6 +29,8 @@ find_package(crengine-ng REQUIRED CONFIG)
 find_path(CRENGINE_INCLUDE_DIR crengine.h
     HINTS "${crengine-ng_DIR}/../../../include" "${crengine-ng_DIR}/../../../../include"
     PATH_SUFFIXES crengine-ng REQUIRED)
+# QuickJS-ng, static, for Temml (TeX to MathML in articles, D36).
+find_package(qjs REQUIRED CONFIG)
 
 set(DECKREADER_CRENGINE_DATA "${CMAKE_INSTALL_FULL_DATADIR}/crengine-ng"
     CACHE PATH "Where crengine-ng's CSS and hyphenation patterns are installed")
@@ -60,6 +62,7 @@ add_library(deckreader_core STATIC
     src/state.cpp
     src/system.cpp
     src/testscript.cpp
+    src/texmath.cpp
     src/text.cpp
     src/ui.cpp
     src/util.cpp
@@ -70,7 +73,7 @@ target_include_directories(deckreader_core PUBLIC src ${CMAKE_CURRENT_BINARY_DIR
 target_include_directories(deckreader_core SYSTEM PUBLIC ${CRENGINE_INCLUDE_DIR})
 target_link_libraries(deckreader_core PUBLIC
     crengine-ng::crengine-ng PkgConfig::SDL3 PkgConfig::FREETYPE PkgConfig::HARFBUZZ PkgConfig::PNG
-    PkgConfig::CURL PkgConfig::ZLIB Threads::Threads)
+    PkgConfig::CURL PkgConfig::ZLIB Threads::Threads qjs)
 target_compile_options(deckreader_core PRIVATE -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
 
 add_executable(deckreader src/main.cpp)

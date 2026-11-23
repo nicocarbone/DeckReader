@@ -8,6 +8,10 @@ darker than the text, draw transparent and translucent pixels over a
 plate of the text colour, as Standard Ebooks' own CSS does for
 engravings in dark mode. Opaque images (photos, covers) are unchanged,
 and so is every light page.
+
+CSS background images get no plate: they are decoration, and MathML's
+radical sign is one, an SVG stroked in the text colour, which the plate
+turned into a solid block (DeckReader D36).
 ---
 diff --git a/crengine/src/lvdrawbuf/lvimagescaleddrawcallback.h b/crengine/src/lvdrawbuf/lvimagescaleddrawcallback.h
 --- a/crengine/src/lvdrawbuf/lvimagescaleddrawcallback.h
@@ -66,3 +70,30 @@ diff --git a/crengine/src/lvdrawbuf/lvimagescaleddrawcallback.cpp b/crengine/src
                          // Plot it as-is if *buffer* pixel is transparent
                          row[x] = cl ^ rgba_invert;
                      } else {
+diff --git a/crengine/src/lvrend.cpp b/crengine/src/lvrend.cpp
+--- a/crengine/src/lvrend.cpp
++++ b/crengine/src/lvrend.cpp
+@@ -8917,6 +8917,23 @@ void DrawBackgroundImage(ldomNode* enode, LVDrawBuf& drawbuf, int x0, int y0, in
+         lString32 filepath = lString32(style->background_image.c_str());
+         LVImageSourceRef img = enode->getParentNode()->getDocument()->getObjectImageSource(filepath);
+         if (!img.isNull()) {
++            // No plate behind background images on dark pages: they are
++            // decoration, not line art, and MathML's radical sign is one,
++            // stroked in the text colour (a plate made it a solid block).
++            // The plate is drawn only when the text is lighter than the
++            // background: make them the same while this image is drawn.
++            struct NoPlate {
++                LVDrawBuf& buf;
++                lUInt32 text;
++                explicit NoPlate(LVDrawBuf& b)
++                        : buf(b)
++                        , text(b.GetTextColor()) {
++                    buf.SetTextColor(buf.GetBackgroundColor());
++                }
++                ~NoPlate() {
++                    buf.SetTextColor(text);
++                }
++            } no_plate(drawbuf);
+             // Native image size
+             int img_w = img->GetWidth();
+             int img_h = img->GetHeight();

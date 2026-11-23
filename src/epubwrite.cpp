@@ -184,13 +184,6 @@ std::string xml_escape(const std::string& s) {
     return o;
 }
 
-namespace {
-
-// Character references in attribute values (addresses, alt texts): the
-// numeric ones and &amp; &lt; &gt; &quot; &apos; &nbsp;. Other named ones
-// ("&mdash;") are left as they are, for the engine, which knows HTML's
-// names (attr_escape keeps them); references to characters XML can't hold
-// are dropped.
 std::string decode_entities(const std::string& s) {
     static const std::pair<const char*, long> named[] = {{"amp", '&'},   {"lt", '<'},     {"gt", '>'},
                                                          {"quot", '"'},  {"apos", '\''}, {"nbsp", 0xA0}};
@@ -234,6 +227,8 @@ std::string decode_entities(const std::string& s) {
     }
     return o;
 }
+
+namespace {
 
 // xml_escape for a decoded attribute value: named references it still
 // holds ("&mdash;") are kept, not turned into "&amp;mdash;".

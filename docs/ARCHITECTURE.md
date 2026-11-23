@@ -53,6 +53,7 @@ on progress and when done (D31); it touches no app state.
 | `articles.*` | The Articles source: starts wallabag syncs, applies their results (state, removed articles, messages), the Articles row's status (D31) |
 | `wallabag.*` | wallabag API client: token, unread list, articles, archive; pictures; the sync plan; the background thread (`SyncWorker`) (D31) |
 | `epubwrite.*` | ZIP writer (zlib) and the article EPUB: page, pictures, cover; the article HTML's pictures (find, rewrite, types) (D31) |
+| `texmath.*` | Math in articles: finds TeX formulas in an article's HTML and turns them into MathML with Temml, run in QuickJS with no I/O and with memory, stack and time limits; line-break points for displayed formulas (D36) |
 | `http.*` | HTTP(S) requests through libcurl: limits, cancelling, error messages (D31) |
 | `ui.*` | DeckVideoPlayer's look on the 800-unit canvas: text, shapes, button glyphs, icons, hint bar |
 | `canvas.*` | CPU drawing: anti-aliased rounded rects, circles, polygons, glyph masks, images |
@@ -136,7 +137,7 @@ when stopped (D28).
 | Path | Content |
 |---|---|
 | `~/.config/deckreader/config.ini` | User settings (created from the template on first start) |
-| `$XDG_DATA_HOME/deckreader/state.json` (Flatpak: `~/.var/app/io.github.nicocarbone.DeckReader/data/deckreader/`) | Reading settings, positions, bookmarks, recent books, wallabag ids waiting to be archived and the last update time |
+| `$XDG_DATA_HOME/deckreader/state.json` (Flatpak: `~/.var/app/io.github.nicocarbone.DeckReader/data/deckreader/`) | Reading settings, positions, bookmarks, recent books, wallabag ids waiting to be archived, the last update time and the format of the article EPUBs (D36) |
 | `$XDG_DATA_HOME/deckreader/articles/<id>.epub` | wallabag articles (D31) |
 | `$XDG_CACHE_HOME/deckreader/metadata.json`, `covers/*.png` | Library titles/authors/covers |
 | `$XDG_CACHE_HOME/deckreader/layout/` | crengine's laid-out books |

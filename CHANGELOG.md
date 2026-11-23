@@ -5,6 +5,35 @@ text of its GitHub release (CI extracts it, see `docs/DEVELOPMENT.md` §6),
 so write it for people installing the app, and add one for every release.
 Design details behind each change are in [docs/DECISIONS.md](docs/DECISIONS.md).
 
+## 0.3.2 (2026-11-23)
+
+Math in web articles: formulas show as math instead of as their code.
+
+**Install or update:** in Desktop Mode, download `DeckReader-v0.3.2.tar.gz`
+below, extract it and run `./scripts/install-steamos.sh` in Konsole.
+Updating keeps your settings, reading positions and bookmarks. Full steps
+are in the
+[README](https://github.com/nicocarbone/DeckReader#install-on-steam-deck-and-steamos).
+
+### Web articles
+
+- **Math in articles.** Formulas that sites write in TeX for MathJax or
+  KaTeX (between `\(` and `\)`, `\[` and `\]`, or `$$`) now show as math,
+  with fractions, integrals, sub- and superscripts and symbols, in your
+  theme's colours and at your text size, instead of as their code. Long
+  formulas break between their parts. Prices such as "$5 and $10" stay
+  as they are.
+- The first update after installing looks at your unread articles again
+  and downloads once more the ones with math, so they show it too. The
+  others are left as they are.
+
+### Also
+
+- A math font (STIX Two Math) is now included. EPUB books whose formulas
+  are in MathML, such as some textbooks, use it too.
+- After changing the theme with Y, table borders and other lines without
+  a colour of their own take the new theme's colour right away.
+
 ## 0.3.1 (2026-11-21)
 
 Any book or article can now be marked as read or as unread.

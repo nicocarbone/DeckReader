@@ -46,6 +46,11 @@ std::string make_article_epub(ArticleBook book);
 // &, <, > and " as entities; characters XML can't hold (NUL, most control
 // characters) left out.
 std::string xml_escape(const std::string& s);
+// Character references in attribute values (addresses, alt texts) and TeX
+// (texmath.h): the numeric ones and &amp; &lt; &gt; &quot; &apos; &nbsp;.
+// Other named ones ("&mdash;") are left as they are, for the engine, which
+// knows HTML's names; references to characters XML can't hold are dropped.
+std::string decode_entities(const std::string& s);
 // A link or picture address in a page at `base`, made absolute as browsers
 // do ("../", "?query", spaces and non-ASCII as %XX); "" for what isn't
 // http(s) (data:, javascript:, ...). The #fragment is dropped.

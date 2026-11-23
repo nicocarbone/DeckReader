@@ -1,0 +1,90 @@
+From: DeckReader
+Subject: [PATCH] Default-colour borders and MathML radicals in the current
+ text colour
+
+A border without a colour of its own is in the text colour
+(currentcolor), but crengine took the colour from the style, which holds
+the text colour the page was laid out with. DeckReader changes themes
+without a new layout (the text follows: it is drawn in the colour of the
+moment), so table borders and MathML's fraction bars and radical
+overlines kept the old theme's colour: light grey lines on the Day
+theme. Draw them in the text colour at drawing time.
+
+MathML's radical sign is an SVG stroked in the layout's text colour:
+stroke it in the current one too, unless the element has a colour of its
+own (DeckReader D36).
+---
+diff --git a/crengine/src/lvrend.cpp b/crengine/src/lvrend.cpp
+--- a/crengine/src/lvrend.cpp
++++ b/crengine/src/lvrend.cpp
+@@ -8453,6 +8453,14 @@
+     hasleftBorder = hasleftBorder & !(bc.type == css_val_unspecified && bc.value == css_generic_transparent);
+ 
+     if (hasbottomBorder || hasleftBorder || hasrightBorder || hastopBorder) {
++        // A border without a colour of its own is in the text colour
++        // ("currentcolor"): the colour at drawing time, as for text, so it
++        // follows a theme change made without a new layout (the colour in
++        // the style is the one the page was laid out with).
++        auto borderColor = [&](int i) -> lUInt32 {
++            return style->border_color[i].type == css_val_color ? style->border_color[i].value
++                                                                : drawbuf.GetTextColor() & 0xFFFFFF;
++        };
+         lUInt32 shadecolor = 0x555555;
+         lUInt32 lightcolor = 0xAAAAAA;
+         int width = 0; // values in % are invalid for borders, so we shouldn't get any
+@@ -8467,7 +8475,7 @@
+         int tbw = topBorderwidth, rbw = rightBorderwidth, bbw = bottomBorderwidth, lbw = leftBorderwidth;
+         if (hastopBorder) {
+             int dot = 1, interval = 0; //default style
+-            lUInt32 topBordercolor = style->border_color[0].value;
++            lUInt32 topBordercolor = borderColor(0);
+             topBorderwidth = tbw;
+             rightBorderwidth = rbw;
+             // bottomBorderwidth=bbw; // (not used)
+@@ -8584,7 +8592,7 @@
+         //right
+         if (hasrightBorder) {
+             int dot = 1, interval = 0; //default style
+-            lUInt32 rightBordercolor = style->border_color[1].value;
++            lUInt32 rightBordercolor = borderColor(1);
+             topBorderwidth = tbw;
+             rightBorderwidth = rbw;
+             bottomBorderwidth = bbw;
+@@ -8693,7 +8701,7 @@
+         //bottom
+         if (hasbottomBorder) {
+             int dot = 1, interval = 0; //default style
+-            lUInt32 bottomBordercolor = style->border_color[2].value;
++            lUInt32 bottomBordercolor = borderColor(2);
+             // topBorderwidth=tbw; // (not used)
+             rightBorderwidth = rbw;
+             bottomBorderwidth = bbw;
+@@ -8802,7 +8810,7 @@
+         //left
+         if (hasleftBorder) {
+             int dot = 1, interval = 0; //default style
+-            lUInt32 leftBordercolor = style->border_color[3].value;
++            lUInt32 leftBordercolor = borderColor(3);
+             topBorderwidth = tbw;
+             // rightBorderwidth=rbw; // (not used)
+             bottomBorderwidth = bbw;
+@@ -8915,6 +8923,19 @@
+     css_style_ref_t style = enode->getStyle();
+     if (!style->background_image.empty()) {
+         lString32 filepath = lString32(style->background_image.c_str());
++        // MathML's radical sign is an SVG stroked in the text colour of the
++        // layout: stroke it in the text colour at drawing time, as text,
++        // unless its colour is the element's own.
++        if (style->color.type != css_val_color && filepath.startsWith("data:image/svg;-cr-plain,")) {
++            int pos = filepath.pos("stroke='#");
++            if (pos >= 0 && pos + 15 <= filepath.length()) {
++                lString8 hex;
++                hex << fmt::hex(drawbuf.GetTextColor() & 0xFFFFFF);
++                while (hex.length() < 6)
++                    hex.insert(0, 1, '0');
++                filepath.replace(pos + 9, 6, Utf8ToUnicode(hex));
++            }
++        }
+         LVImageSourceRef img = enode->getParentNode()->getDocument()->getObjectImageSource(filepath);
+         if (!img.isNull()) {
+             // No plate behind background images on dark pages: they are
