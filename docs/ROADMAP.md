@@ -135,6 +135,38 @@ the EPUB builder, the picture downloads, the articles thread.
   built so DeckVideoPlayer can reuse it (its roadmap needs a first text
   field too).
 - Uses the network permission added for wallabag (v0.3, D31).
+- Kiwix's catalogue is an OPDS feed too: the ZIM files of v0.7.
+
+## v0.7: whole wikis offline (Kiwix's ZIM files)
+
+Offline copies of whole wikis (Wikipedia in any language, Wiktionary,
+Wikivoyage, topic selections), the ZIM files Kiwix reads, browsed in the
+reader like books: paged, in the reading themes, with the controller. In
+DeckReader rather than an app of its own: the book engine, the reading
+interface, the library with the microSD card and the packaging are
+already here, and Kiwix's own apps need a web engine, which is out
+(requirements 3.1).
+
+- Before it: following links with the controller and going back (D35,
+  footnotes), and the controller on-screen keyboard (v0.6) for search.
+- `.zim` files in the library next to the EPUBs (split `.zimaa` ones
+  too); opening one shows its main page.
+- libzim (openZIM, GPL) in the Flatpak, at first without Xapian: search
+  by title, suggestions as one types; full-text search later.
+- Each page cleaned for the engine as Wikipedia's are (D37), its
+  pictures and styles read from the ZIM; no JavaScript.
+- Links followed with the controller and by touch. With dozens of links
+  on a screen, a pointer on the right trackpad may beat stepping through
+  them: to try. B goes back.
+- A wiki menu: main page, search, random article, history; bookmarks
+  and reading positions per article (XPointers, as for books).
+- ZIM files downloaded from Kiwix's catalogue (OPDS, v0.6) to the
+  microSD card. Sizes: the whole English Wikipedia with pictures is about
+  100 GB; without pictures, other languages and topic selections far
+  less.
+- First, a proof of concept: libzim built in the SDK and a few pages of
+  a small Wikipedia ZIM through the engine, to see how Kiwix's HTML
+  renders.
 
 ## Later / ideas
 

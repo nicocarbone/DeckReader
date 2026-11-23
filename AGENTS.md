@@ -138,4 +138,6 @@ look at them before finishing.
   v0.4.0-test1 to test3; test2 added a folder per list). Third audit
   (ISSUES.md, Gemini) reviewed in D38: most items fixed, the rest
   declined with reasons.
-- Next: footnotes (D35); then feeds (v0.5).
+- Next: footnotes (D35); then feeds (v0.5), OPDS catalogues and the
+  on-screen keyboard (v0.6), whole wikis offline from Kiwix's ZIM files
+  (v0.7).
