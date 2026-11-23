@@ -121,6 +121,26 @@ through a VPN.
 - Tests: a fake OPDS server shaped like Calibre's; then the owner's
   Calibre.
 
+## v0.5.x: Google Drive folders
+
+A Google Drive folder shared with "anyone with the link" (one's own books,
+or a folder shared with permission) as a shelf: its books and subfolders
+listed, A downloads one, with v0.5's catalogue screen and downloads.
+
+- The folder's link in `config.ini`; listing and downloads through
+  Google's Drive API (documented), not the folder's web page.
+- The API needs a key. To decide: one from the project's own Google Cloud
+  project, limited to the Drive API (users only paste a link; the key is
+  public in the code), or each user's own (setup like the Wikipedia
+  token, no shared quota).
+- Public and link-shared folders only: private ones would need a Google
+  sign-in (much more work).
+- Quirks to handle: files Drive marks as downloaded too often
+  ("download quota exceeded"), and older share links that need their
+  resource key.
+- Until then: rclone, set up once in Desktop Mode, can sync a Drive
+  folder to `~/Books`.
+
 ## v0.6: newsletters and blogs by feed
 
 Posts from RSS and Atom feeds (Substack and Ghost newsletters, blogs,

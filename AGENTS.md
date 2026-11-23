@@ -139,6 +139,6 @@ look at them before finishing.
   (ISSUES.md, Gemini) reviewed in D38: most items fixed, the rest
   declined with reasons.
 - Next: footnotes (D35); then the Calibre library over OPDS (v0.5),
-  feeds (v0.6), the on-screen keyboard (v0.7), whole wikis offline from
-  Kiwix's ZIM files (v0.8); maybe later, Calibre's wireless device
-  connection.
+  Google Drive folders (v0.5.x), feeds (v0.6), the on-screen keyboard
+  (v0.7), whole wikis offline from Kiwix's ZIM files (v0.8); maybe
+  later, Calibre's wireless device connection.
